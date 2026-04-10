@@ -1,4 +1,5 @@
 """Tests for orchid_api.tracing — LangSmith configuration."""
+
 from __future__ import annotations
 
 import os

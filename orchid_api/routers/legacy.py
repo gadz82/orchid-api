@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
@@ -59,7 +59,7 @@ async def chat_legacy(
 @router.post("/index", response_model=IndexResponse)
 async def index_data(request: IndexRequest):
     """Manually index test data into the vector store for a tenant."""
-    from orchid.core.repository import VectorWriter
+    from orchid_ai.core.repository import VectorWriter
 
     reader = app_ctx.runtime.get_reader()
 
@@ -69,7 +69,7 @@ async def index_data(request: IndexRequest):
             detail="Vector store does not support writing (backend may be 'null')",
         )
 
-    from orchid.rag.indexer import StaticIndexer
+    from orchid_ai.rag.indexer import StaticIndexer
 
     indexer = StaticIndexer(writer=reader)
     counts = await indexer.index_all(tenant_key=request.tenant_id)

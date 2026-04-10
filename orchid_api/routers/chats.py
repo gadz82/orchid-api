@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx

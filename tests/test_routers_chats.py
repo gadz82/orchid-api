@@ -1,4 +1,5 @@
 """Tests for orchid_api.routers.chats — CRUD endpoints."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -6,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from orchid_api.routers.chats import create_chat, delete_chat, get_messages, list_chats
 from orchid_api.models import CreateChatRequest

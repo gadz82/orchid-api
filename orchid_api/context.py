@@ -7,9 +7,9 @@ from typing import Any
 
 import httpx
 
-from orchid.core.identity import IdentityResolver
-from orchid.persistence.base import ChatStorage
-from orchid.runtime import OrchidRuntime
+from orchid_ai.core.identity import IdentityResolver
+from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.runtime import OrchidRuntime
 
 
 @dataclass

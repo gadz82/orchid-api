@@ -1,9 +1,10 @@
 """Tests for orchid_api.models — request/response schemas and converters."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from orchid.persistence.models import ChatMessage, ChatSession
+from orchid_ai.persistence.models import ChatMessage, ChatSession
 
 from orchid_api.models import (
     ChatRequest,
@@ -91,10 +92,17 @@ class TestSessionToOut:
 
     def test_string_date_passthrough(self):
         """When dates are already strings, they pass through as str()."""
-        session = type("S", (), {
-            "id": "x", "title": "t", "created_at": "2024-01-01",
-            "updated_at": "2024-01-01", "is_shared": False,
-        })()
+        session = type(
+            "S",
+            (),
+            {
+                "id": "x",
+                "title": "t",
+                "created_at": "2024-01-01",
+                "updated_at": "2024-01-01",
+                "is_shared": False,
+            },
+        )()
         out = session_to_out(session)
         assert out.created_at == "2024-01-01"
 
@@ -108,10 +116,17 @@ class TestMessageToOut:
         assert "T" in out.created_at
 
     def test_string_date_passthrough(self):
-        msg = type("M", (), {
-            "id": "m", "role": "assistant", "content": "hi",
-            "agents_used": ["a1"], "created_at": "2024-06-15",
-        })()
+        msg = type(
+            "M",
+            (),
+            {
+                "id": "m",
+                "role": "assistant",
+                "content": "hi",
+                "agents_used": ["a1"],
+                "created_at": "2024-06-15",
+            },
+        )()
         out = message_to_out(msg)
         assert out.agents_used == ["a1"]
         assert out.created_at == "2024-06-15"

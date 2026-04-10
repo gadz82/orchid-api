@@ -1,4 +1,5 @@
 """Tests for orchid_api.auth — authentication dependency."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid.core.identity import IdentityError
-from orchid.core.state import AuthContext
+from orchid_ai.core.identity import IdentityError
+from orchid_ai.core.state import AuthContext
 
 from orchid_api.auth import get_auth_context
 from orchid_api.settings import Settings

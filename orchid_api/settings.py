@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     # ── Chat persistence ───────────────────────────────────
-    chat_storage_class: str = "orchid.persistence.sqlite.SQLiteChatStorage"
+    chat_storage_class: str = "orchid_ai.persistence.sqlite.SQLiteChatStorage"
     chat_db_dsn: str = "~/.orchid/chats.db"
 
     # ── Document upload ───────────────────────────────────────

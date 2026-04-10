@@ -82,7 +82,7 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `VECTOR_BACKEND` | `qdrant` | Vector store backend (`qdrant` or `null`) |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
+| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
 | `IDENTITY_RESOLVER_CLASS` | -- | Dotted path to IdentityResolver subclass |

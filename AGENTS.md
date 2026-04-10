@@ -63,7 +63,7 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 | `VECTOR_BACKEND` | `qdrant` | Vector store backend |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
+| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
 | `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to IdentityResolver |
@@ -99,7 +99,7 @@ docker run -p 8000:8000 -v ./orchid.yml:/app/orchid.yml orchid-api
 
 - Python 3.11+, Ruff, line length 120
 - `from __future__ import annotations` in every file
-- Imports: `from orchid.xxx` (never `from src.xxx`)
+- Imports: `from orchid_ai.xxx` (never `from src.xxx`)
 - No vendor-specific code — platform integrations belong in consumer projects
 
 ## Common Pitfalls

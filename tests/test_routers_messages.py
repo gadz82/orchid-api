@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from orchid_api.routers.messages import send_chat_message, upload_documents
 from orchid_api.settings import Settings
@@ -174,8 +174,10 @@ async def test_upload_no_writer(auth):
 @pytest.mark.asyncio
 async def test_upload_no_chat_repo(auth):
     """Returns 503 when chat repo is not initialised."""
-    with patch("orchid_api.routers.messages.app_ctx") as ctx, \
-         patch("orchid_api.routers.messages.isinstance", return_value=True):
+    with (
+        patch("orchid_api.routers.messages.app_ctx") as ctx,
+        patch("orchid_api.routers.messages.isinstance", return_value=True),
+    ):
         ctx.runtime.get_reader.return_value = MagicMock()
         ctx.chat_repo = None
         with pytest.raises(HTTPException) as exc:
@@ -187,8 +189,10 @@ async def test_upload_no_chat_repo(auth):
 async def test_upload_chat_not_found(auth):
     """Returns 404 when chat doesn't exist."""
     mock_reader = MagicMock()
-    with patch("orchid_api.routers.messages.app_ctx") as ctx, \
-         patch("orchid_api.routers.messages.isinstance", return_value=True):
+    with (
+        patch("orchid_api.routers.messages.app_ctx") as ctx,
+        patch("orchid_api.routers.messages.isinstance", return_value=True),
+    ):
         ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=None)
