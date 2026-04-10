@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from orchid_api.routers.sharing import share_chat
 from orchid_api.settings import Settings
@@ -42,8 +42,10 @@ async def test_share_no_qdrant_backend(auth):
 @pytest.mark.asyncio
 async def test_share_chat_not_found(auth):
     """Returns 404 when chat doesn't exist."""
-    with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
-         patch("orchid_api.routers.sharing.isinstance", return_value=True):
+    with (
+        patch("orchid_api.routers.sharing.app_ctx") as ctx,
+        patch("orchid_api.routers.sharing.isinstance", return_value=True),
+    ):
         mock_reader = MagicMock()
         ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
@@ -57,8 +59,10 @@ async def test_share_chat_not_found(auth):
 async def test_share_wrong_user(auth, sample_session):
     """Returns 404 when chat belongs to a different user."""
     sample_session.user_id = "other-user"
-    with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
-         patch("orchid_api.routers.sharing.isinstance", return_value=True):
+    with (
+        patch("orchid_api.routers.sharing.app_ctx") as ctx,
+        patch("orchid_api.routers.sharing.isinstance", return_value=True),
+    ):
         ctx.runtime.get_reader.return_value = MagicMock()
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
@@ -79,9 +83,11 @@ async def test_share_success(auth, sample_session):
     agent_cfg.rag.namespace = "knowledge"
     mock_config.agents = {"helper": agent_cfg}
 
-    with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
-         patch("orchid_api.routers.sharing.isinstance", return_value=True), \
-         patch("orchid_api.routers.sharing.load_config", return_value=mock_config):
+    with (
+        patch("orchid_api.routers.sharing.app_ctx") as ctx,
+        patch("orchid_api.routers.sharing.isinstance", return_value=True),
+        patch("orchid_api.routers.sharing.load_config", return_value=mock_config),
+    ):
         ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)

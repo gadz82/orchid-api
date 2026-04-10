@@ -1,4 +1,5 @@
 """Tests for orchid_api.routers.legacy — health, legacy chat, index."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from orchid_api.models import ChatRequest, IndexRequest
 from orchid_api.routers.legacy import chat_legacy, health, index_data

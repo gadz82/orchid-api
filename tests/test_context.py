@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orchid.runtime import OrchidRuntime
+from orchid_ai.runtime import OrchidRuntime
 
 from orchid_api.context import AppContext
 

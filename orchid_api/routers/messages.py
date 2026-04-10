@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langchain_core.messages import AIMessage, HumanMessage
 
-from orchid.core.state import AuthContext
+from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
@@ -51,10 +51,10 @@ async def send_chat_message(
     reader = app_ctx.runtime.get_reader()
 
     if files:
-        from orchid.core.repository import VectorWriter
-        from orchid.documents.chunker import ChunkConfig
-        from orchid.documents.pipeline import extract_text, ingest_document
-        from orchid.rag.scopes import RAGScope
+        from orchid_ai.core.repository import VectorWriter
+        from orchid_ai.documents.chunker import ChunkConfig
+        from orchid_ai.documents.pipeline import extract_text, ingest_document
+        from orchid_ai.rag.scopes import RAGScope
 
         if isinstance(reader, VectorWriter):
             scope = RAGScope(
@@ -173,10 +173,10 @@ async def upload_documents(
     settings: Settings = Depends(get_settings),
 ):
     """Upload documents for chat-scoped RAG."""
-    from orchid.core.repository import VectorWriter
-    from orchid.documents.chunker import ChunkConfig
-    from orchid.documents.pipeline import ingest_document
-    from orchid.rag.scopes import RAGScope
+    from orchid_ai.core.repository import VectorWriter
+    from orchid_ai.documents.chunker import ChunkConfig
+    from orchid_ai.documents.pipeline import ingest_document
+    from orchid_ai.rag.scopes import RAGScope
 
     reader = app_ctx.runtime.get_reader()
 

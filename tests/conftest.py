@@ -1,4 +1,5 @@
 """Shared fixtures for orchid-api tests."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -6,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from orchid.core.state import AuthContext
-from orchid.persistence.models import ChatMessage, ChatSession
+from orchid_ai.core.state import AuthContext
+from orchid_ai.persistence.models import ChatMessage, ChatSession
 
 
 @pytest.fixture

@@ -23,13 +23,13 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from orchid.config.loader import load_config
-from orchid.core.repository import VectorStoreAdmin
-from orchid.graph.graph import build_graph
-from orchid.persistence.factory import build_chat_storage
-from orchid.rag.factory import build_reader
-from orchid.runtime import OrchidRuntime
-from orchid.utils import import_class
+from orchid_ai.config.loader import load_config
+from orchid_ai.core.repository import VectorStoreAdmin
+from orchid_ai.graph.graph import build_graph
+from orchid_ai.persistence.factory import build_chat_storage
+from orchid_ai.rag.factory import build_reader
+from orchid_ai.runtime import OrchidRuntime
+from orchid_ai.utils import import_class
 
 from .context import app_ctx
 from .routers import chats, legacy, messages, sharing

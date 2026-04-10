@@ -6,8 +6,8 @@ import logging
 
 from fastapi import Depends, Header, HTTPException
 
-from orchid.core.identity import IdentityError
-from orchid.core.state import AuthContext
+from orchid_ai.core.identity import IdentityError
+from orchid_ai.core.state import AuthContext
 
 from .context import app_ctx
 from .settings import Settings, get_settings

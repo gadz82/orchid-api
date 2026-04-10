@@ -6,8 +6,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from orchid.config.loader import load_config
-from orchid.core.state import AuthContext
+from orchid_ai.config.loader import load_config
+from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
@@ -32,7 +32,7 @@ async def share_chat(
     try:
         from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
-        from orchid.rag.backends.qdrant import QdrantRepository
+        from orchid_ai.rag.backends.qdrant import QdrantRepository
     except ImportError:
         raise HTTPException(status_code=503, detail="Sharing requires Qdrant backend")
 

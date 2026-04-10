@@ -1,4 +1,5 @@
 """Tests for orchid_api.settings — configuration and YAML overlay."""
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,7 @@ class TestSettings:
 
     def test_default_storage_class(self):
         s = Settings()
-        assert s.chat_storage_class == "orchid.persistence.sqlite.SQLiteChatStorage"
+        assert s.chat_storage_class == "orchid_ai.persistence.sqlite.SQLiteChatStorage"
 
     def test_default_storage_dsn(self):
         s = Settings()
