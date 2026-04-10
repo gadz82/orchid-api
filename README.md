@@ -112,8 +112,8 @@ docker compose -f docker-compose.local.yml up --build   # PostgreSQL + Qdrant
 ## Development
 
 ```bash
-pip install -e ../orchid -e ".[dev]"
-ORCHID_CONFIG=../examples/basketball/orchid.yml uvicorn orchid_api.main:app --reload --port 8000
+pip install -e ".[dev]"
+ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --reload --port 8000
 ```
 
 ## Testing

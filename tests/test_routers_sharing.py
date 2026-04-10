@@ -1,4 +1,5 @@
 """Tests for orchid_api.routers.sharing — chat sharing endpoint."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,7 +33,7 @@ async def test_share_no_qdrant_backend(auth):
     """Returns 503 when reader is not a QdrantRepository."""
     with patch("orchid_api.routers.sharing.app_ctx") as ctx:
         ctx.chat_repo = AsyncMock()
-        ctx.reader = MagicMock()  # Not a QdrantRepository
+        ctx.runtime.get_reader.return_value = MagicMock()  # Not a QdrantRepository
         with pytest.raises(HTTPException) as exc:
             await share_chat("chat-1", auth=auth, settings=Settings())
         assert exc.value.status_code == 503
@@ -44,7 +45,7 @@ async def test_share_chat_not_found(auth):
     with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
          patch("orchid_api.routers.sharing.isinstance", return_value=True):
         mock_reader = MagicMock()
-        ctx.reader = mock_reader
+        ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
@@ -58,7 +59,7 @@ async def test_share_wrong_user(auth, sample_session):
     sample_session.user_id = "other-user"
     with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
          patch("orchid_api.routers.sharing.isinstance", return_value=True):
-        ctx.reader = MagicMock()
+        ctx.runtime.get_reader.return_value = MagicMock()
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         with pytest.raises(HTTPException) as exc:
@@ -81,7 +82,7 @@ async def test_share_success(auth, sample_session):
     with patch("orchid_api.routers.sharing.app_ctx") as ctx, \
          patch("orchid_api.routers.sharing.isinstance", return_value=True), \
          patch("orchid_api.routers.sharing.load_config", return_value=mock_config):
-        ctx.reader = mock_reader
+        ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         result = await share_chat("chat-001", auth=auth, settings=Settings())

@@ -28,6 +28,7 @@ from orchid.core.repository import VectorStoreAdmin
 from orchid.graph.graph import build_graph
 from orchid.persistence.factory import build_chat_storage
 from orchid.rag.factory import build_reader
+from orchid.runtime import OrchidRuntime
 from orchid.utils import import_class
 
 from .context import app_ctx
@@ -70,10 +71,15 @@ async def lifespan(app: FastAPI):
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
 
-    app_ctx.reader = build_reader(
+    # ── OrchidRuntime — single dependency bag for the framework ──
+    reader = build_reader(
         vector_backend=settings.vector_backend,
         qdrant_url=settings.qdrant_url,
         embedding_model=settings.embedding_model,
+    )
+    app_ctx.runtime = OrchidRuntime(
+        default_model=settings.litellm_model,
+        reader=reader,
     )
 
     # ── Chat persistence ──
@@ -88,19 +94,18 @@ async def lifespan(app: FastAPI):
 
     # Pre-create vector store collections for all RAG namespaces in config
     namespaces = [a.rag.namespace for a in agents_config.agents.values() if a.rag.enabled and a.rag.namespace]
-    if isinstance(app_ctx.reader, VectorStoreAdmin) and namespaces:
-        await app_ctx.reader.ensure_collections([*namespaces, "uploads"])
+    if isinstance(reader, VectorStoreAdmin) and namespaces:
+        await reader.ensure_collections([*namespaces, "uploads"])
 
     # ── Startup hook (consumer-provided) ──
     if settings.startup_hook:
         hook_fn = import_class(settings.startup_hook)
-        await hook_fn(reader=app_ctx.reader, settings=settings)
+        await hook_fn(reader=reader, settings=settings)
         logger.info("[API] Startup hook executed: %s", settings.startup_hook)
 
     app_ctx.graph = build_graph(
         config=agents_config,
-        default_model=settings.litellm_model,
-        reader=app_ctx.reader,
+        runtime=app_ctx.runtime,
     )
     logger.info(
         "[API] Ready — model=%s, domain=%s, vector_backend=%s, agents=%s",
