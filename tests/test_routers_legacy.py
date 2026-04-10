@@ -26,9 +26,11 @@ async def test_health_graph_ready():
     settings = Settings()
     with patch("orchid_api.routers.legacy.app_ctx") as ctx:
         ctx.graph = "some-graph"
+        ctx.runtime.default_model = "ollama/llama3.2"
         result = await health(settings=settings)
     assert result["status"] == "ok"
     assert result["graph_ready"] is True
+    assert result["model"] == "ollama/llama3.2"
 
 
 @pytest.mark.asyncio
@@ -36,6 +38,7 @@ async def test_health_graph_not_ready():
     settings = Settings()
     with patch("orchid_api.routers.legacy.app_ctx") as ctx:
         ctx.graph = None
+        ctx.runtime.default_model = "ollama/llama3.2"
         result = await health(settings=settings)
     assert result["graph_ready"] is False
 
@@ -92,8 +95,10 @@ async def test_chat_legacy_generates_chat_id(auth):
 
 @pytest.mark.asyncio
 async def test_index_no_writer():
+    """When runtime.get_reader() returns a non-VectorWriter, index_data should 503."""
     with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        ctx.reader = None
+        # Return a plain object that is NOT a VectorWriter instance
+        ctx.runtime.get_reader.return_value = object()
         with pytest.raises(HTTPException) as exc:
             await index_data(IndexRequest())
         assert exc.value.status_code == 503

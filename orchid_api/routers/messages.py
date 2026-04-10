@@ -48,14 +48,15 @@ async def send_chat_message(
 
     # ── Process attached files ───────────────────────────────
     file_context_parts: list[str] = []
+    reader = app_ctx.runtime.get_reader()
 
-    if files and app_ctx.reader is not None:
+    if files:
         from orchid.core.repository import VectorWriter
         from orchid.documents.chunker import ChunkConfig
         from orchid.documents.pipeline import extract_text, ingest_document
         from orchid.rag.scopes import RAGScope
 
-        if isinstance(app_ctx.reader, VectorWriter):
+        if isinstance(reader, VectorWriter):
             scope = RAGScope(
                 tenant_id=auth.tenant_key,
                 user_id=auth.user_id,
@@ -92,7 +93,7 @@ async def send_chat_message(
                         filename=file.filename,
                         scope=scope,
                         namespace=settings.upload_namespace,
-                        writer=app_ctx.reader,
+                        writer=reader,
                         chunk_config=chunk_config,
                         pre_extracted_text=extracted_text,
                     )
@@ -177,7 +178,9 @@ async def upload_documents(
     from orchid.documents.pipeline import ingest_document
     from orchid.rag.scopes import RAGScope
 
-    if app_ctx.reader is None or not isinstance(app_ctx.reader, VectorWriter):
+    reader = app_ctx.runtime.get_reader()
+
+    if not isinstance(reader, VectorWriter):
         raise HTTPException(status_code=503, detail="Vector store does not support writing")
     if app_ctx.chat_repo is None:
         raise HTTPException(status_code=503, detail="Chat repository not initialised")
@@ -215,7 +218,7 @@ async def upload_documents(
                 filename=file.filename,
                 scope=scope,
                 namespace=settings.upload_namespace,
-                writer=app_ctx.reader,
+                writer=reader,
                 chunk_config=chunk_config,
                 vision_model=settings.vision_model or settings.litellm_model,
             )

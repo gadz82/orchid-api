@@ -1,4 +1,5 @@
 """Tests for orchid_api.routers.messages — send message and upload."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -80,7 +81,8 @@ async def test_send_message_success(auth, sample_session):
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         ctx.chat_repo.get_messages = AsyncMock(return_value=[])
-        ctx.reader = None
+        # runtime.get_reader() returns a NullVectorReader-like mock (no VectorWriter)
+        ctx.runtime.get_reader.return_value = MagicMock()
         result = await send_chat_message("chat-001", message="Hi there", files=[], auth=auth, settings=Settings())
     assert result.response == "Hello!"
     assert result.agents_used == ["helper"]
@@ -97,7 +99,7 @@ async def test_send_message_persists_messages(auth, sample_session):
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         ctx.chat_repo.get_messages = AsyncMock(return_value=[])
-        ctx.reader = None
+        ctx.runtime.get_reader.return_value = MagicMock()
         await send_chat_message("chat-001", message="Hello", files=[], auth=auth, settings=Settings())
     calls = ctx.chat_repo.add_message.call_args_list
     assert len(calls) == 2
@@ -115,7 +117,7 @@ async def test_send_message_auto_titles_first(auth, sample_session):
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         ctx.chat_repo.get_messages = AsyncMock(return_value=[])
-        ctx.reader = None
+        ctx.runtime.get_reader.return_value = MagicMock()
         await send_chat_message("chat-001", message="Tell me about LeBron", files=[], auth=auth, settings=Settings())
     ctx.chat_repo.update_title.assert_called_once()
     title = ctx.chat_repo.update_title.call_args.args[1]
@@ -132,7 +134,7 @@ async def test_send_message_no_auto_title_with_history(auth, sample_session, sam
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         ctx.chat_repo.get_messages = AsyncMock(return_value=[sample_message])
-        ctx.reader = None
+        ctx.runtime.get_reader.return_value = MagicMock()
         await send_chat_message("chat-001", message="Follow up", files=[], auth=auth, settings=Settings())
     ctx.chat_repo.update_title.assert_not_called()
 
@@ -147,7 +149,7 @@ async def test_send_message_truncates_long_title(auth, sample_session):
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
         ctx.chat_repo.get_messages = AsyncMock(return_value=[])
-        ctx.reader = None
+        ctx.runtime.get_reader.return_value = MagicMock()
         long_msg = "A" * 100
         await send_chat_message("chat-001", message=long_msg, files=[], auth=auth, settings=Settings())
     title = ctx.chat_repo.update_title.call_args.args[1]
@@ -161,7 +163,8 @@ async def test_send_message_truncates_long_title(auth, sample_session):
 async def test_upload_no_writer(auth):
     """Returns 503 when vector store doesn't support writing."""
     with patch("orchid_api.routers.messages.app_ctx") as ctx:
-        ctx.reader = None
+        # Return a plain object that is NOT a VectorWriter instance
+        ctx.runtime.get_reader.return_value = object()
         ctx.chat_repo = AsyncMock()
         with pytest.raises(HTTPException) as exc:
             await upload_documents("chat-1", files=[], auth=auth, settings=Settings())
@@ -171,8 +174,9 @@ async def test_upload_no_writer(auth):
 @pytest.mark.asyncio
 async def test_upload_no_chat_repo(auth):
     """Returns 503 when chat repo is not initialised."""
-    with patch("orchid_api.routers.messages.app_ctx") as ctx:
-        ctx.reader = MagicMock()
+    with patch("orchid_api.routers.messages.app_ctx") as ctx, \
+         patch("orchid_api.routers.messages.isinstance", return_value=True):
+        ctx.runtime.get_reader.return_value = MagicMock()
         ctx.chat_repo = None
         with pytest.raises(HTTPException) as exc:
             await upload_documents("chat-1", files=[], auth=auth, settings=Settings())
@@ -183,10 +187,9 @@ async def test_upload_no_chat_repo(auth):
 async def test_upload_chat_not_found(auth):
     """Returns 404 when chat doesn't exist."""
     mock_reader = MagicMock()
-    # Make isinstance check for VectorWriter pass
     with patch("orchid_api.routers.messages.app_ctx") as ctx, \
          patch("orchid_api.routers.messages.isinstance", return_value=True):
-        ctx.reader = mock_reader
+        ctx.runtime.get_reader.return_value = mock_reader
         ctx.chat_repo = AsyncMock()
         ctx.chat_repo.get_chat = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:

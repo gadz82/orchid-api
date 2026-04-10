@@ -36,7 +36,9 @@ async def share_chat(
     except ImportError:
         raise HTTPException(status_code=503, detail="Sharing requires Qdrant backend")
 
-    if not isinstance(app_ctx.reader, QdrantRepository):
+    reader = app_ctx.runtime.get_reader()
+
+    if not isinstance(reader, QdrantRepository):
         raise HTTPException(status_code=503, detail="Sharing requires Qdrant backend")
 
     chat = await app_ctx.chat_repo.get_chat(chat_id)
@@ -59,7 +61,7 @@ async def share_chat(
     total_promoted = 0
     for namespace in all_namespaces:
         try:
-            count = await app_ctx.reader.promote_scope(
+            count = await reader.promote_scope(
                 namespace=namespace,
                 source_filter=source_filter,
                 new_scope_fields={

@@ -42,7 +42,7 @@ orchid-api/
 
 2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `AuthContext`. No other code initiates OAuth flows (ADR-010).
 
-3. **`AppContext` replaces globals.** All runtime state (graph, reader, chat_repo, http_client, identity_resolver) lives in `context.py:app_ctx`. Routers access it via `from ..context import app_ctx`.
+3. **`AppContext` replaces globals.** All runtime state (runtime, graph, chat_repo, http_client, identity_resolver) lives in `context.py:app_ctx`. The `runtime` field is an `OrchidRuntime` instance that owns the reader, LLM service, and MCP client factory. Routers access it via `from ..context import app_ctx`.
 
 4. **Routers are split by domain (SRP).** `chats.py` = CRUD, `messages.py` = send + upload, `sharing.py` = share, `legacy.py` = backward compat. New endpoints go in the appropriate router, never in `main.py`.
 
@@ -73,12 +73,12 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 
 ```bash
 # Standalone (no Docker):
-pip install -e ../orchid -e .
-ORCHID_CONFIG=../examples/basketball/orchid.yml uvicorn orchid_api.main:app --port 8000
+pip install orchid orchid-api
+ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --port 8000
 
 # Docker:
-docker compose -f docker-compose.demo.yml up --build    # SQLite
-docker compose -f docker-compose.local.yml up --build   # PostgreSQL + Qdrant
+docker build -t orchid-api .
+docker run -p 8000:8000 -v ./orchid.yml:/app/orchid.yml orchid-api
 ```
 
 ## Endpoints
@@ -100,7 +100,7 @@ docker compose -f docker-compose.local.yml up --build   # PostgreSQL + Qdrant
 - Python 3.11+, Ruff, line length 120
 - `from __future__ import annotations` in every file
 - Imports: `from orchid.xxx` (never `from src.xxx`)
-- No vendor-specific code — platform integrations belong in consumers (`/docebo/`, `/examples/`)
+- No vendor-specific code — platform integrations belong in consumer projects
 
 ## Common Pitfalls
 

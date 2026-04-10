@@ -61,7 +61,9 @@ async def index_data(request: IndexRequest):
     """Manually index test data into the vector store for a tenant."""
     from orchid.core.repository import VectorWriter
 
-    if app_ctx.reader is None or not isinstance(app_ctx.reader, VectorWriter):
+    reader = app_ctx.runtime.get_reader()
+
+    if not isinstance(reader, VectorWriter):
         raise HTTPException(
             status_code=503,
             detail="Vector store does not support writing (backend may be 'null')",
@@ -69,7 +71,7 @@ async def index_data(request: IndexRequest):
 
     from orchid.rag.indexer import StaticIndexer
 
-    indexer = StaticIndexer(writer=app_ctx.reader)
+    indexer = StaticIndexer(writer=reader)
     counts = await indexer.index_all(tenant_key=request.tenant_id)
 
     logger.info("[API] /index tenant=%s counts=%s", request.tenant_id, counts)
@@ -84,7 +86,7 @@ async def index_data(request: IndexRequest):
 async def health(settings: Settings = Depends(get_settings)):
     return {
         "status": "ok",
-        "model": settings.litellm_model,
+        "model": app_ctx.runtime.default_model,
         "domain": settings.auth_domain,
         "vector_backend": settings.vector_backend,
         "graph_ready": app_ctx.graph is not None,
