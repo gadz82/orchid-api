@@ -73,7 +73,7 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 
 ```bash
 # Standalone (no Docker):
-pip install orchid orchid-api
+pip install orchid-ai orchid-api
 ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --port 8000
 
 # Docker:
