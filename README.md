@@ -94,19 +94,14 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 
 ## Docker
 
-```dockerfile
-# Build (from parent directory):
-docker build -f orchid-api/Dockerfile -t orchid-api .
+`orchid-api` is a pip package — it does not ship a Dockerfile. Dockerfiles live in consumer projects that depend on it:
 
-# Run:
-docker run -p 8000:8000 -e ORCHID_CONFIG=/app/config/orchid.yml orchid-api
-```
-
-Or with docker-compose:
+- **`docebo/Dockerfile`** — Docebo deployment (PostgreSQL + Qdrant)
+- **`examples/Dockerfile`** — Demo deployment (SQLite + Qdrant)
 
 ```bash
-docker compose -f docker-compose.demo.yml up --build    # SQLite
-docker compose -f docker-compose.local.yml up --build   # PostgreSQL + Qdrant
+docker compose -f docker-compose.demo.yml up --build    # examples (SQLite)
+docker compose -f docker-compose.local.yml up --build   # docebo (PostgreSQL + Qdrant)
 ```
 
 ## Development

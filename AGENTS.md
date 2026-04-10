@@ -20,7 +20,6 @@ orchid-api/
       messages.py    Send messages + document upload (multipart/form-data)
       sharing.py     Promote chat RAG data to user-common scope
       legacy.py      Legacy single-shot /chat endpoint (JSON body)
-  Dockerfile
   pyproject.toml
 ```
 
@@ -72,14 +71,12 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 ## Running
 
 ```bash
-# Standalone (no Docker):
+# Standalone:
 pip install orchid-ai orchid-api
 ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --port 8000
-
-# Docker:
-docker build -t orchid-api .
-docker run -p 8000:8000 -v ./orchid.yml:/app/orchid.yml orchid-api
 ```
+
+Dockerfiles live in consumer projects (`docebo/Dockerfile`, `examples/Dockerfile`), not here.
 
 ## Endpoints
 
