@@ -1,0 +1,15 @@
+# Gitlint — enforce Conventional Commits for semantic-release
+# https://jorisroovers.com/gitlint/
+
+[general]
+contrib = contrib-title-conventional-commits
+ignore = merge-commit,revert-commit
+
+[title-max-length]
+line-length = 72
+
+[body-max-line-length]
+line-length = 120
+
+[contrib-title-conventional-commits]
+types = feat,fix,perf,refactor,docs,style,test,build,ci,chore
