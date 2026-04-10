@@ -27,7 +27,7 @@ pip install orchid-api
 Requires the `orchid` library:
 
 ```bash
-pip install orchid orchid-api
+pip install orchid-ai orchid-api
 ```
 
 ## Quick Start
