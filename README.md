@@ -4,7 +4,7 @@
 
 <h1 align="center">Orchid API</h1>
 
-FastAPI server for the [Orchid](../orchid) multi-agent AI framework.
+FastAPI server for the [Orchid](https://github.com/gadz82/orchid) multi-agent AI framework.
 
 Provides HTTP endpoints for chat management, message handling, document uploads, and RAG sharing. This is a thin HTTP layer -- all agent logic, graph building, and persistence live in the `orchid` library.
 
