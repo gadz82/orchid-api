@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.3 (2026-04-13)
+
+### Bug Fixes
+
+- Tools result context injection.
+  ([`f69a951`](https://github.com/gadz82/orchid-api/commit/f69a951fffa248dac9a5f9b408cc3c5dcbc8f2a3))
+
+
 ## v1.0.2 (2026-04-13)
 
 ### Bug Fixes
