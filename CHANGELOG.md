@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-04-13)
+
+### Bug Fixes
+
+- Coversation context optimization.
+  ([`ee10a38`](https://github.com/gadz82/orchid-api/commit/ee10a384c0ae6e12cd7d3d20b2cd017f3c354c7c))
+
+
 ## v1.0.0 (2026-04-13)
 
 - Initial Release
