@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.6 (2026-04-14)
+
+### Bug Fixes
+
+- Built-in tools args propagation fix.
+  ([`16fcc74`](https://github.com/gadz82/orchid-api/commit/16fcc74bf685ca5e1ab867aac86be57911ddca95))
+
+
 ## v1.0.5 (2026-04-14)
 
 ### Bug Fixes
