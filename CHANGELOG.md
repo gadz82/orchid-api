@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.8 (2026-04-14)
+
+### Bug Fixes
+
+- Improve LLM-driven tool execution
+  ([`dc8f1dc`](https://github.com/gadz82/orchid-api/commit/dc8f1dcb6ef94c493165c77342bde47ca498c24f))
+
+
 ## v1.0.7 (2026-04-14)
 
 ### Bug Fixes
