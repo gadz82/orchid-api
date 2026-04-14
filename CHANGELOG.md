@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.9 (2026-04-14)
+
+### Bug Fixes
+
+- Implement multi-turn LLM tool loop package version update
+  ([`c9598c8`](https://github.com/gadz82/orchid-api/commit/c9598c8594eb98749938eb0bf42e61c4a58182c8))
+
+
 ## v1.0.8 (2026-04-14)
 
 ### Bug Fixes
