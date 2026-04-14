@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.10 (2026-04-14)
+
+### Bug Fixes
+
+- Bump orchid-ai dependency to 1.2.13
+  ([`ae53e47`](https://github.com/gadz82/orchid-api/commit/ae53e47bd9eca865e8c3606ca535d12a1ffbadb4))
+
+
 ## v1.0.9 (2026-04-14)
 
 ### Bug Fixes
