@@ -1,6 +1,6 @@
 [project]
 name = "orchid-api"
-version = "1.0.7"
+version = "1.0.8"
 description = "Orchid API — FastAPI server for the Orchid agent framework"
 requires-python = ">=3.11"
 dependencies = [
