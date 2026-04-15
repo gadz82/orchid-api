@@ -32,7 +32,7 @@ from orchid_ai.runtime import OrchidRuntime
 from orchid_ai.utils import import_class
 
 from .context import app_ctx
-from .routers import chats, legacy, messages, sharing
+from .routers import chats, legacy, messages, mcp_auth, sharing
 from .settings import get_settings
 from .tracing import configure_tracing
 
@@ -146,4 +146,5 @@ app.add_middleware(
 app.include_router(chats.router)
 app.include_router(messages.router)
 app.include_router(sharing.router)
+app.include_router(mcp_auth.router)
 app.include_router(legacy.router)
