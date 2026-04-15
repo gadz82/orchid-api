@@ -68,6 +68,9 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
 | `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to IdentityResolver |
 | `STARTUP_HOOK` | `""` | Async function called at startup |
+| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore` | MCP OAuth token store class |
+| `MCP_TOKEN_STORE_DSN` | `~/.orchid/mcp_tokens.db` | Token store connection string |
+| `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
 
 ## Running
 

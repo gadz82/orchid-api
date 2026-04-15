@@ -94,6 +94,9 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `STARTUP_HOOK` | -- | Async function called at startup |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | -- | LangSmith API key |
+| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore` | MCP OAuth token store backend |
+| `MCP_TOKEN_STORE_DSN` | `~/.orchid/mcp_tokens.db` | Token store connection string |
+| `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
 
 **Priority:** env vars > `orchid.yml` > hardcoded defaults.
 

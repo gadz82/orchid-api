@@ -59,6 +59,11 @@ _YAML_TO_ENV: dict[tuple[str, str], str] = {
     # ── mcp ───────────────────────────────────────────────────
     ("mcp", "catalog_url"): "MCP_CATALOG_URL",
     ("mcp", "notifications_url"): "MCP_NOTIFICATIONS_URL",
+    # ── mcp_auth ──────────────────────────────────────────────
+    ("mcp_auth", "token_store_class"): "MCP_TOKEN_STORE_CLASS",
+    ("mcp_auth", "token_store_dsn"): "MCP_TOKEN_STORE_DSN",
+    # ── api ───────────────────────────────────────────────────
+    ("api", "base_url"): "API_BASE_URL",
     # ── tracing ───────────────────────────────────────────────
     ("tracing", "langsmith_tracing"): "LANGSMITH_TRACING",
     ("tracing", "langsmith_api_key"): "LANGSMITH_API_KEY",
@@ -156,6 +161,13 @@ class Settings(BaseSettings):
     # ── MCP ───────────────────────────────────────────────────
     mcp_catalog_url: str = ""
     mcp_notifications_url: str = ""
+
+    # ── MCP OAuth token storage (shares DB with chat persistence) ──
+    mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore"
+    mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
+
+    # ── API base URL (for OAuth callback construction) ───────
+    api_base_url: str = "http://localhost:8000"
 
     # ── Tracing ───────────────────────────────────────────────
     langsmith_api_key: str = ""
