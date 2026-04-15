@@ -51,6 +51,10 @@ curl http://localhost:8000/health
 | `POST` | `/chats/{id}/messages` | **multipart/form-data** | Send a message (with optional files) |
 | `POST` | `/chats/{id}/upload` | multipart/form-data | Upload documents for chat RAG |
 | `POST` | `/chats/{id}/share` | -- | Promote chat RAG data to user scope |
+| `GET` | `/mcp/auth/servers` | -- | List OAuth MCP servers + user auth status |
+| `GET` | `/mcp/auth/servers/{name}/authorize` | -- | Generate OAuth authorization URL (PKCE) |
+| `GET` | `/mcp/auth/callback` | -- | OAuth IdP redirect callback |
+| `DELETE` | `/mcp/auth/servers/{name}/token` | -- | Revoke stored OAuth token |
 | `POST` | `/chat` | JSON | Legacy single-shot (no persistence) |
 | `GET` | `/health` | -- | Readiness check |
 
@@ -68,6 +72,7 @@ orchid_api/
     chats.py       CRUD: create, list, delete chat sessions
     messages.py    Send messages + document upload (multipart/form-data)
     sharing.py     Promote chat RAG data to user-common scope
+    mcp_auth.py    MCP per-server OAuth: list, authorize, callback, revoke
     legacy.py      Legacy single-shot /chat endpoint (JSON body)
 ```
 

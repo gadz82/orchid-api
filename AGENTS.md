@@ -19,6 +19,7 @@ orchid-api/
       chats.py       CRUD: create, list, delete chat sessions
       messages.py    Send messages + document upload (multipart/form-data)
       sharing.py     Promote chat RAG data to user-common scope
+      mcp_auth.py    MCP per-server OAuth: list servers, authorize, callback, revoke
       legacy.py      Legacy single-shot /chat endpoint (JSON body)
   pyproject.toml
 ```
@@ -89,6 +90,10 @@ Dockerfiles live in consumer projects (`docebo/Dockerfile`, `examples/Dockerfile
 | POST | `/chats/{id}/messages` | messages | Send message (multipart) |
 | POST | `/chats/{id}/upload` | messages | Upload documents for chat RAG |
 | POST | `/chats/{id}/share` | sharing | Promote chat RAG to user scope |
+| GET | `/mcp/auth/servers` | mcp_auth | List OAuth servers + user auth status |
+| GET | `/mcp/auth/servers/{name}/authorize` | mcp_auth | Generate OAuth authorization URL |
+| GET | `/mcp/auth/callback` | mcp_auth | OAuth IdP redirect callback |
+| DELETE | `/mcp/auth/servers/{name}/token` | mcp_auth | Revoke stored OAuth token |
 | POST | `/chat` | legacy | Single-shot (no persistence) |
 | GET | `/health` | main | Readiness check |
 
