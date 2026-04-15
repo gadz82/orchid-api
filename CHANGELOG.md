@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v1.0.11 (2026-04-15)
+
+### Bug Fixes
+
+- Add MCP pre-flight auth check and expose auth-required servers
+  ([`b73c458`](https://github.com/gadz82/orchid-api/commit/b73c45860f30293fc22e708f6f867e468101e136))
+
+- Bump orchid-ai dependency to v1.2.14 in CLI and API
+  ([`9a54d23`](https://github.com/gadz82/orchid-api/commit/9a54d2308ec66817645644491ad92120fadfea63))
+
+- MCP OAuth flow with server list, authorization, callback, and token revocation endpoints
+  ([`ab02f49`](https://github.com/gadz82/orchid-api/commit/ab02f4971c4fc3744b7a942a120a6ccbcad96a28))
+
+- MCP OAuth token store management and API base URL configuration
+  ([`6c8d8d3`](https://github.com/gadz82/orchid-api/commit/6c8d8d3ce550fd74496140932a87a8ae6b7ad0b6))
+
+- Simplify HTML content formatting and remove unused imports in mcp_auth and cli commands
+  ([`55748a3`](https://github.com/gadz82/orchid-api/commit/55748a33575256daa91f9710eac96c1e28bca910))
+
+
 ## v1.0.10 (2026-04-14)
 
 ### Bug Fixes
