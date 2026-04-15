@@ -121,12 +121,23 @@ async def send_chat_message(
         elif row.role == "assistant":
             history_messages.append(AIMessage(content=row.content, id=row.id))
 
+    # ── Pre-flight MCP auth check ─────────────────────────────
+    mcp_auth_status: dict[str, bool] = {}
+    registry = app_ctx.runtime.mcp_auth_registry
+    store = app_ctx.mcp_token_store
+    if registry and not registry.empty and store:
+        for name in registry.oauth_servers:
+            token = await store.get_token(auth.tenant_key, auth.user_id, name)
+            mcp_auth_status[name] = token is not None and not token.is_expired
+
     # Build initial state with history + augmented message
-    initial_state = {
+    initial_state: dict = {
         "messages": history_messages + [HumanMessage(content=augmented_message)],
         "auth_context": auth,
         "chat_id": chat_id,
     }
+    if mcp_auth_status:
+        initial_state["mcp_auth_status"] = mcp_auth_status
 
     logger.info(
         "[API] /chats/%s/messages user=%s history=%d files=%d message=%s…",
@@ -154,11 +165,13 @@ async def send_chat_message(
             title += "…"
         await app_ctx.chat_repo.update_title(chat_id, title)
 
+    auth_required = [name for name, ok in mcp_auth_status.items() if not ok]
     return ChatResponse(
         response=response_text,
         chat_id=chat_id,
         tenant_id=auth.tenant_key,
         agents_used=agents_used,
+        auth_required=auth_required,
     )
 
 
