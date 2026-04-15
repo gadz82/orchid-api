@@ -35,6 +35,7 @@ class ChatResponse(BaseModel):
     chat_id: str
     tenant_id: str
     agents_used: list[str]
+    auth_required: list[str] = []  # MCP servers needing OAuth authorization
 
 
 class ChatSessionOut(BaseModel):
