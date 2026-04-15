@@ -108,7 +108,7 @@ class TestYamlToEnvMapping:
     def test_all_sections_covered(self):
         """Verify the mapping covers expected sections."""
         sections = {k[0] for k in _YAML_TO_ENV.keys()}
-        expected = {"agents", "llm", "auth", "startup", "rag", "upload", "storage", "mcp", "tracing"}
+        expected = {"agents", "llm", "auth", "startup", "rag", "upload", "storage", "mcp", "mcp_auth", "api", "tracing"}
         assert expected == sections
 
     def test_agents_config_path_mapped(self):

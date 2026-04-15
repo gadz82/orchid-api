@@ -27,6 +27,7 @@ from orchid_ai.config.loader import load_config
 from orchid_ai.core.repository import VectorStoreAdmin
 from orchid_ai.graph.graph import build_graph
 from orchid_ai.persistence.factory import build_chat_storage
+from orchid_ai.persistence.mcp_token_factory import build_mcp_token_store
 from orchid_ai.rag.factory import build_reader
 from orchid_ai.runtime import OrchidRuntime
 from orchid_ai.utils import import_class
@@ -89,6 +90,15 @@ async def lifespan(app: FastAPI):
     )
     await app_ctx.chat_repo.init_db()
 
+    # ── MCP OAuth token storage ──
+    mcp_token_store = build_mcp_token_store(
+        class_path=settings.mcp_token_store_class,
+        dsn=settings.mcp_token_store_dsn,
+    )
+    await mcp_token_store.init_db()
+    app_ctx.mcp_token_store = mcp_token_store
+    app_ctx.runtime.mcp_token_store = mcp_token_store
+
     # ── Load YAML agent config (ADR-016) ──
     agents_config = load_config(settings.agents_config_path)
 
@@ -116,6 +126,8 @@ async def lifespan(app: FastAPI):
     )
     yield
 
+    if app_ctx.mcp_token_store:
+        await app_ctx.mcp_token_store.close()
     if app_ctx.chat_repo:
         await app_ctx.chat_repo.close()
     if app_ctx.http_client:
