@@ -172,8 +172,7 @@ async def oauth_callback(
 
     if not code or not state:
         return HTMLResponse(
-            content="<html><body><h2>Missing code or state</h2>"
-            "<script>window.close();</script></body></html>",
+            content="<html><body><h2>Missing code or state</h2><script>window.close();</script></body></html>",
             status_code=400,
         )
 
@@ -181,8 +180,7 @@ async def oauth_callback(
     pending = _oauth_pending.pop(state, None)
     if not pending:
         return HTMLResponse(
-            content="<html><body><h2>Invalid or expired state</h2>"
-            "<script>window.close();</script></body></html>",
+            content="<html><body><h2>Invalid or expired state</h2><script>window.close();</script></body></html>",
             status_code=400,
         )
 
@@ -190,16 +188,14 @@ async def oauth_callback(
     registry = app_ctx.runtime.mcp_auth_registry
     if not registry:
         return HTMLResponse(
-            content="<html><body><h2>Server configuration error</h2>"
-            "<script>window.close();</script></body></html>",
+            content="<html><body><h2>Server configuration error</h2><script>window.close();</script></body></html>",
             status_code=500,
         )
 
     server_info = registry.get_server(server_name)
     if not server_info:
         return HTMLResponse(
-            content=f"<html><body><h2>Unknown server: {server_name}</h2>"
-            "<script>window.close();</script></body></html>",
+            content=f"<html><body><h2>Unknown server: {server_name}</h2><script>window.close();</script></body></html>",
             status_code=500,
         )
 
@@ -211,8 +207,7 @@ async def oauth_callback(
 
     if not token_endpoint:
         return HTMLResponse(
-            content="<html><body><h2>No token endpoint configured</h2>"
-            "<script>window.close();</script></body></html>",
+            content="<html><body><h2>No token endpoint configured</h2><script>window.close();</script></body></html>",
             status_code=500,
         )
 
