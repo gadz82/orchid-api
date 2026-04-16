@@ -62,6 +62,9 @@ _YAML_TO_ENV: dict[tuple[str, str], str] = {
     # ── mcp_auth ──────────────────────────────────────────────
     ("mcp_auth", "token_store_class"): "MCP_TOKEN_STORE_CLASS",
     ("mcp_auth", "token_store_dsn"): "MCP_TOKEN_STORE_DSN",
+    # ── checkpointer ─────────────────────────────────────────
+    ("checkpointer", "type"): "CHECKPOINTER_TYPE",
+    ("checkpointer", "dsn"): "CHECKPOINTER_DSN",
     # ── api ───────────────────────────────────────────────────
     ("api", "base_url"): "API_BASE_URL",
     # ── tracing ───────────────────────────────────────────────
@@ -165,6 +168,10 @@ class Settings(BaseSettings):
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
     mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
+
+    # ── Checkpointer (LangGraph state persistence) ────────────
+    checkpointer_type: str = ""  # "memory", "sqlite", "postgres", or dotted class path; empty = disabled
+    checkpointer_dsn: str = ""  # connection string or file path
 
     # ── API base URL (for OAuth callback construction) ───────
     api_base_url: str = "http://localhost:8000"
