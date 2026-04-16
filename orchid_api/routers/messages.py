@@ -10,7 +10,7 @@ from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
-from ..models import ChatResponse
+from ..models import ChatResponse, InterruptResponse, ToolApprovalRequest
 from ..settings import Settings, get_settings
 from ._helpers import prepare_graph_state
 
@@ -39,7 +39,29 @@ async def send_chat_message(
     prepared = await prepare_graph_state(chat_id, message, files, auth, settings)
 
     # Run the agent graph (blocking — returns full response)
-    result = await app_ctx.graph.ainvoke(prepared.initial_state)
+    graph_config = {"configurable": {"thread_id": chat_id}}
+    try:
+        result = await app_ctx.graph.ainvoke(prepared.initial_state, config=graph_config)
+    except Exception as exc:
+        # HITL: graph paused for tool approval — return interrupt response
+        if type(exc).__name__ == "GraphInterrupt":
+            interrupts = exc.args[0] if exc.args else []
+            approvals = [
+                ToolApprovalRequest(
+                    tool=i.value.get("tool", "") if isinstance(i.value, dict) else str(i.value),
+                    args=i.value.get("args", {}) if isinstance(i.value, dict) else {},
+                    agent=i.value.get("agent", "") if isinstance(i.value, dict) else "",
+                    interrupt_id=str(i.id),
+                )
+                for i in interrupts
+            ]
+            # Don't persist messages — they'll be persisted after resume
+            return InterruptResponse(
+                chat_id=chat_id,
+                tenant_id=auth.tenant_key,
+                approvals_needed=approvals,
+            )
+        raise
 
     response_text = result.get("final_response", "No response generated.")
     agents_used = result.get("active_agents", [])
