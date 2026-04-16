@@ -117,6 +117,18 @@ async def stream_chat_message(
 
                 # Skip internal supervisor messages
                 if content.startswith("[Supervisor"):
+                    # Handoff messages (sequential advance) → emit as status, not token
+                    if content.startswith("[Supervisor →"):
+                        # Extract the actual handoff text after the prefix
+                        handoff_text = content.split("] ", 1)[-1] if "] " in content else content
+                        yield _sse({"type": "handoff", "content": handoff_text})
+                    continue
+
+                # Skip handoff-style messages that don't have the [Supervisor prefix
+                # (sometimes the synthesis LLM echoes the handoff preamble)
+                _lower = content.lower()
+                if "handoff message" in _lower and len(content) < 300:
+                    yield _sse({"type": "handoff", "content": content})
                     continue
 
                 # Only stream text content (not tool calls)
