@@ -68,6 +68,7 @@ async def stream_chat_message(
     # Track active agents and full response for persistence
     seen_agents: set[str] = set()
     _seen_agent_results: set[str] = set()  # dedup agent results
+    _seen_handoffs: set[str] = set()  # dedup handoff messages
     agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
 
@@ -146,16 +147,21 @@ async def stream_chat_message(
                 if content.startswith("[Supervisor"):
                     # Handoff messages (sequential advance) → emit as status, not token
                     if content.startswith("[Supervisor →"):
-                        # Extract the actual handoff text after the prefix
                         handoff_text = content.split("] ", 1)[-1] if "] " in content else content
-                        yield _sse({"type": "handoff", "content": handoff_text})
+                        handoff_text = _clean_handoff(handoff_text)
+                        if handoff_text and handoff_text not in _seen_handoffs:
+                            _seen_handoffs.add(handoff_text)
+                            yield _sse({"type": "handoff", "content": handoff_text})
                     continue
 
                 # Skip handoff-style messages that don't have the [Supervisor prefix
                 # (sometimes the synthesis LLM echoes the handoff preamble)
                 _lower = content.lower()
-                if "handoff message" in _lower and len(content) < 300:
-                    yield _sse({"type": "handoff", "content": content})
+                if "handoff message" in _lower and len(content) < 500:
+                    cleaned = _clean_handoff(content)
+                    if cleaned and cleaned not in _seen_handoffs:
+                        _seen_handoffs.add(cleaned)
+                        yield _sse({"type": "handoff", "content": cleaned})
                     continue
 
                 # Only stream text content (not tool calls)
@@ -215,3 +221,27 @@ async def stream_chat_message(
 def _sse(data: dict) -> str:
     """Format a dict as an SSE event line."""
     return f"data: {json.dumps(data)}\n\n"
+
+
+# ── Preamble patterns the LLM wraps handoff content in ──
+_HANDOFF_PREAMBLES = [
+    "here is the handoff message:",
+    "here is a brief handoff message:",
+    "here is a brief handoff message that summarises",
+    "handoff message:",
+]
+
+
+def _clean_handoff(text: str) -> str:
+    """Strip LLM preamble from handoff messages and clean up."""
+    cleaned = text.strip()
+    # Strip known preambles (case-insensitive)
+    lower = cleaned.lower()
+    for preamble in _HANDOFF_PREAMBLES:
+        if lower.startswith(preamble):
+            cleaned = cleaned[len(preamble) :].strip()
+            break
+    # Strip surrounding quotes
+    if cleaned.startswith('"') and cleaned.endswith('"'):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
