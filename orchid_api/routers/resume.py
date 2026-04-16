@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 from pydantic import BaseModel
 
@@ -12,7 +13,8 @@ from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
-from ..models import ChatResponse, InterruptResponse, ToolApprovalRequest
+from ..models import ChatResponse, InterruptResponse
+from ._helpers import build_interrupt_response, verify_chat_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +42,9 @@ async def resume_chat(
     """
     if app_ctx.graph is None:
         raise HTTPException(status_code=503, detail="Graph not initialised")
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
 
-    # Verify chat ownership
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth)
 
-    # Checkpointer is required for resume
     if app_ctx.runtime.checkpointer is None:
         raise HTTPException(
             status_code=400,
@@ -62,31 +58,12 @@ async def resume_chat(
             Command(resume={"approved": body.approved}),
             config=graph_config,
         )
-    except Exception as exc:
-        # Another interrupt (multi-step approval chain)
-        if type(exc).__name__ == "GraphInterrupt":
-            interrupts = exc.args[0] if exc.args else []
-            approvals = [
-                ToolApprovalRequest(
-                    tool=i.value.get("tool", "") if isinstance(i.value, dict) else str(i.value),
-                    args=i.value.get("args", {}) if isinstance(i.value, dict) else {},
-                    agent=i.value.get("agent", "") if isinstance(i.value, dict) else "",
-                    interrupt_id=str(i.id),
-                )
-                for i in interrupts
-            ]
-            return InterruptResponse(
-                chat_id=chat_id,
-                tenant_id=auth.tenant_key,
-                approvals_needed=approvals,
-            )
-        raise
+    except GraphInterrupt as exc:
+        return build_interrupt_response(exc, chat_id, auth.tenant_key)
 
     response_text = result.get("final_response", "No response generated.")
     agents_used = result.get("active_agents", [])
 
-    # Persist messages now that the graph completed normally
-    # Note: the original user message was already persisted before the interrupt
     await app_ctx.chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
 
     return ChatResponse(
