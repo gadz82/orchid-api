@@ -67,7 +67,7 @@ async def stream_chat_message(
 
     # Track active agents and full response for persistence
     seen_agents: set[str] = set()
-    _seen_agent_results: set[str] = set()  # dedup agent results
+    agent_results: dict[str, str] = {}  # agent_name → last substantial response
     _seen_handoffs: set[str] = set()  # dedup handoff messages
     agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
@@ -91,37 +91,25 @@ async def stream_chat_message(
             ):
                 node = metadata.get("langgraph_node", "")
 
-                # Track which agents are active and capture their final response
+                # Track which agents are active and buffer their responses
                 if node.endswith("_agent"):
                     agent_name = node.removesuffix("_agent")
                     if agent_name not in seen_agents:
                         seen_agents.add(agent_name)
                         yield _sse({"type": "status", "agent": agent_name, "status": "started"})
 
-                    # Capture the agent's final text response (the [AgentName Agent] message)
+                    # Buffer the agent's final text response (for the done event)
                     content = getattr(msg, "content", "")
                     if content and isinstance(content, str):
                         tool_calls = getattr(msg, "tool_calls", None)
                         if not tool_calls:
-                            # Strip the "[AgentName Agent]\n" prefix if present
                             clean = content
                             prefix = f"[{agent_name.title()} Agent]\n"
                             if clean.startswith(prefix):
                                 clean = clean[len(prefix) :]
-                            # Only emit if it's substantial (skip skill names, short noise)
                             stripped = clean.strip()
                             if len(stripped) > 50 and " " in stripped:
-                                # Deduplicate: the same content may come twice (streaming + final)
-                                key = f"{agent_name}:{clean[:100]}"
-                                if key not in _seen_agent_results:
-                                    _seen_agent_results.add(key)
-                                    yield _sse(
-                                        {
-                                            "type": "agent_result",
-                                            "agent": agent_name,
-                                            "content": clean.strip(),
-                                        }
-                                    )
+                                agent_results[agent_name] = stripped
 
                     agents_done = True
                     continue  # Don't stream agent messages as main tokens
@@ -155,9 +143,15 @@ async def stream_chat_message(
                     continue
 
                 # Skip handoff-style messages that don't have the [Supervisor prefix
-                # (sometimes the synthesis LLM echoes the handoff preamble)
+                # Catch: "Here is the handoff message:", "User has requested...",
+                # and other supervisor-generated inter-agent instructions.
                 _lower = content.lower()
-                if "handoff message" in _lower and len(content) < 500:
+                is_handoff = (
+                    "handoff message" in _lower
+                    or ("next step" in _lower and "agent" in _lower and len(content) < 500)
+                    or (content.strip().startswith('"') and "agent" in _lower and len(content) < 300)
+                )
+                if is_handoff:
                     cleaned = _clean_handoff(content)
                     if cleaned and cleaned not in _seen_handoffs:
                         _seen_handoffs.add(cleaned)
@@ -190,6 +184,7 @@ async def stream_chat_message(
                 "type": "done",
                 "response": full_response,
                 "agents_used": agents_used,
+                "agent_results": agent_results,  # {agent_name: response_text}
                 "auth_required": auth_required,
             }
         )
