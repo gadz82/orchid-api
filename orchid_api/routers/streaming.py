@@ -91,14 +91,14 @@ async def stream_chat_message(
             ):
                 node = metadata.get("langgraph_node", "")
 
-                # Track which agents are active and buffer their responses
+                # Track which agents are active and emit their results
                 if node.endswith("_agent"):
                     agent_name = node.removesuffix("_agent")
                     if agent_name not in seen_agents:
                         seen_agents.add(agent_name)
                         yield _sse({"type": "status", "agent": agent_name, "status": "started"})
 
-                    # Buffer the agent's final text response (for the done event)
+                    # Capture the agent's final text response
                     content = getattr(msg, "content", "")
                     if content and isinstance(content, str):
                         tool_calls = getattr(msg, "tool_calls", None)
@@ -109,7 +109,19 @@ async def stream_chat_message(
                                 clean = clean[len(prefix) :]
                             stripped = clean.strip()
                             if len(stripped) > 50 and " " in stripped:
-                                agent_results[agent_name] = stripped
+                                # Only emit once per agent (dedup streaming + final message)
+                                if agent_name not in agent_results:
+                                    agent_results[agent_name] = stripped
+                                    # Emit a "done" status with a preview of the result
+                                    preview = stripped[:200] + "…" if len(stripped) > 200 else stripped
+                                    yield _sse(
+                                        {
+                                            "type": "status",
+                                            "agent": agent_name,
+                                            "status": "done",
+                                            "preview": preview,
+                                        }
+                                    )
 
                     agents_done = True
                     continue  # Don't stream agent messages as main tokens
