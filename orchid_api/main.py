@@ -33,7 +33,7 @@ from orchid_ai.runtime import OrchidRuntime
 from orchid_ai.utils import import_class
 
 from .context import app_ctx
-from .routers import chats, legacy, messages, mcp_auth, sharing, streaming
+from .routers import chats, legacy, messages, mcp_auth, resume, sharing, streaming
 from .settings import get_settings
 from .tracing import configure_tracing
 
@@ -113,6 +113,17 @@ async def lifespan(app: FastAPI):
         await hook_fn(reader=reader, settings=settings)
         logger.info("[API] Startup hook executed: %s", settings.startup_hook)
 
+    # ── Checkpointer (optional — LangGraph state persistence) ──
+    if settings.checkpointer_type:
+        from orchid_ai.checkpointing import build_checkpointer
+
+        checkpointer = await build_checkpointer(
+            checkpointer_type=settings.checkpointer_type,
+            dsn=settings.checkpointer_dsn,
+        )
+        app_ctx.runtime.checkpointer = checkpointer
+        logger.info("[API] Checkpointer: %s", type(checkpointer).__name__)
+
     app_ctx.graph = build_graph(
         config=agents_config,
         runtime=app_ctx.runtime,
@@ -126,6 +137,10 @@ async def lifespan(app: FastAPI):
     )
     yield
 
+    if app_ctx.runtime.checkpointer:
+        from orchid_ai.checkpointing import shutdown_checkpointer
+
+        await shutdown_checkpointer(app_ctx.runtime.checkpointer)
     if app_ctx.mcp_token_store:
         await app_ctx.mcp_token_store.close()
     if app_ctx.chat_repo:
@@ -157,6 +172,7 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────
 app.include_router(chats.router)
 app.include_router(messages.router)
+app.include_router(resume.router)
 app.include_router(sharing.router)
 app.include_router(mcp_auth.router)
 app.include_router(streaming.router)
