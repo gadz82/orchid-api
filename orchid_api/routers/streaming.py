@@ -69,6 +69,7 @@ async def stream_chat_message(
     seen_agents: set[str] = set()
     agent_results: dict[str, str] = {}  # agent_name → last substantial response
     _seen_handoffs: set[str] = set()  # dedup handoff messages
+    _emitted_content: set[str] = set()  # dedup: content already emitted as handoff/status
     agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
 
@@ -126,48 +127,55 @@ async def stream_chat_message(
                     agents_done = True
                     continue  # Don't stream agent messages as main tokens
 
-                # Only stream from the supervisor AFTER agents have run (= synthesis)
-                # OR when the supervisor gives a direct response (no agents activated)
+                # Only stream from the supervisor node
                 if node != "supervisor":
                     continue
-                # Skip the routing step (first supervisor invocation, before any agent runs)
-                # Direct responses are detected by the supervisor setting final_response
-                # without activating agents — we let those through
-                if not agents_done:
-                    # Check if this looks like a direct response (not a routing JSON)
-                    c = getattr(msg, "content", "")
-                    if c and c.strip().startswith("{"):
-                        continue  # routing JSON — skip
 
                 content = getattr(msg, "content", "")
                 if not content or not isinstance(content, str):
                     continue
 
-                # Skip internal supervisor messages
+                # Skip routing JSON (structured output from first supervisor invocation)
+                if content.strip().startswith("{"):
+                    continue
+
+                # Skip internal [Supervisor] dispatch messages
                 if content.startswith("[Supervisor"):
-                    # Handoff messages (sequential advance) → emit as status, not token
                     if content.startswith("[Supervisor →"):
                         handoff_text = content.split("] ", 1)[-1] if "] " in content else content
                         handoff_text = _clean_handoff(handoff_text)
                         if handoff_text and handoff_text not in _seen_handoffs:
                             _seen_handoffs.add(handoff_text)
+                            _emitted_content.add(handoff_text[:100])
                             yield _sse({"type": "handoff", "content": handoff_text})
                     continue
 
-                # Skip handoff-style messages that don't have the [Supervisor prefix
-                # Catch: "Here is the handoff message:", "User has requested...",
-                # and other supervisor-generated inter-agent instructions.
+                # Before agents have run, supervisor messages are routing noise — skip
+                if not agents_done:
+                    continue
+
+                # Detect intermediate supervisor messages (sequential advance handoffs)
+                # These happen BETWEEN agent executions and are instructions for the next agent.
+                # They're NOT the final synthesis. Emit as handoff, not token.
                 _lower = content.lower()
-                is_handoff = (
+                is_intermediate = (
                     "handoff message" in _lower
                     or ("next step" in _lower and "agent" in _lower and len(content) < 500)
                     or (content.strip().startswith('"') and "agent" in _lower and len(content) < 300)
+                    or ("please help" in _lower and "agent" in _lower and len(content) < 500)
+                    or ("the user" in _lower[:30] and len(content) < 400 and "order" not in _lower[:50])
                 )
-                if is_handoff:
+                if is_intermediate:
                     cleaned = _clean_handoff(content)
                     if cleaned and cleaned not in _seen_handoffs:
                         _seen_handoffs.add(cleaned)
+                        _emitted_content.add(cleaned[:100])
                         yield _sse({"type": "handoff", "content": cleaned})
+                    continue
+
+                # Skip content that was already emitted as a handoff/status
+                content_key = content[:100]
+                if content_key in _emitted_content:
                     continue
 
                 # Only stream text content (not tool calls)
