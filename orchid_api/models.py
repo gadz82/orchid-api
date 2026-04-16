@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -36,6 +37,28 @@ class ChatResponse(BaseModel):
     tenant_id: str
     agents_used: list[str]
     auth_required: list[str] = []  # MCP servers needing OAuth authorization
+
+
+class ToolApprovalRequest(BaseModel):
+    """A single tool call that needs human approval before execution."""
+
+    tool: str
+    args: dict[str, Any] = {}
+    agent: str = ""
+    interrupt_id: str = ""
+
+
+class InterruptResponse(BaseModel):
+    """Returned when the graph pauses for human-in-the-loop approval.
+
+    The client should display the approval requests and send a
+    ``POST /chats/{chat_id}/resume`` with the decision.
+    """
+
+    chat_id: str
+    tenant_id: str
+    status: str = "interrupted"
+    approvals_needed: list[ToolApprovalRequest]
 
 
 class ChatSessionOut(BaseModel):
