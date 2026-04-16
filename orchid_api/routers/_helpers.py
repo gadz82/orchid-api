@@ -133,12 +133,24 @@ async def prepare_graph_state(
             token = await store.get_token(auth.tenant_key, auth.user_id, name)
             mcp_auth_status[name] = token is not None and not token.is_expired
 
-    # Build initial state
-    initial_state: dict = {
-        "messages": history_messages + [HumanMessage(content=augmented_message)],
-        "auth_context": auth,
-        "chat_id": chat_id,
-    }
+    # Build initial state.
+    # When a checkpointer is active the graph persists conversation state
+    # internally.  Sending full history would duplicate messages via the
+    # add_messages annotation — only send the new user message.
+    has_checkpointer = app_ctx.runtime is not None and app_ctx.runtime.checkpointer is not None
+
+    if has_checkpointer:
+        initial_state: dict = {
+            "messages": [HumanMessage(content=augmented_message)],
+            "auth_context": auth,
+            "chat_id": chat_id,
+        }
+    else:
+        initial_state: dict = {
+            "messages": history_messages + [HumanMessage(content=augmented_message)],
+            "auth_context": auth,
+            "chat_id": chat_id,
+        }
     if mcp_auth_status:
         initial_state["mcp_auth_status"] = mcp_auth_status
 

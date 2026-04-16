@@ -46,7 +46,8 @@ async def chat_legacy(
         request.message[:80],
     )
 
-    result = await app_ctx.graph.ainvoke(initial_state)
+    graph_config = {"configurable": {"thread_id": chat_id}}
+    result = await app_ctx.graph.ainvoke(initial_state, config=graph_config)
 
     return ChatResponse(
         response=result.get("final_response", "No response generated."),
