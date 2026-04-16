@@ -5,21 +5,22 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from langgraph.errors import GraphInterrupt
 
 from orchid_ai.core.state import AuthContext
 
 from ..auth import get_auth_context
 from ..context import app_ctx
-from ..models import ChatResponse, InterruptResponse, ToolApprovalRequest
+from ..models import ChatResponse, InterruptResponse
 from ..settings import Settings, get_settings
-from ._helpers import prepare_graph_state
+from ._helpers import auto_title_if_first_message, build_interrupt_response, prepare_graph_state, verify_chat_ownership
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chats", tags=["messages"])
 
 
-@router.post("/{chat_id}/messages", response_model=ChatResponse)
+@router.post("/{chat_id}/messages", response_model=ChatResponse | InterruptResponse)
 async def send_chat_message(
     chat_id: str,
     message: str = Form(...),
@@ -30,11 +31,8 @@ async def send_chat_message(
     """
     Send a message in a chat — optionally with attached files (non-streaming).
 
-    When files are provided they are:
-      1. Parsed and their text extracted (immediate context for the LLM).
-      2. Chunked and indexed into Qdrant (long-term RAG for future turns).
-      3. The extracted text is prepended to the user's message so the
-         agent can see the file content in the current turn.
+    Returns ``ChatResponse`` on normal completion, or ``InterruptResponse``
+    when the graph pauses for human-in-the-loop tool approval.
     """
     prepared = await prepare_graph_state(chat_id, message, files, auth, settings)
 
@@ -42,26 +40,9 @@ async def send_chat_message(
     graph_config = {"configurable": {"thread_id": chat_id}}
     try:
         result = await app_ctx.graph.ainvoke(prepared.initial_state, config=graph_config)
-    except Exception as exc:
-        # HITL: graph paused for tool approval — return interrupt response
-        if type(exc).__name__ == "GraphInterrupt":
-            interrupts = exc.args[0] if exc.args else []
-            approvals = [
-                ToolApprovalRequest(
-                    tool=i.value.get("tool", "") if isinstance(i.value, dict) else str(i.value),
-                    args=i.value.get("args", {}) if isinstance(i.value, dict) else {},
-                    agent=i.value.get("agent", "") if isinstance(i.value, dict) else "",
-                    interrupt_id=str(i.id),
-                )
-                for i in interrupts
-            ]
-            # Don't persist messages — they'll be persisted after resume
-            return InterruptResponse(
-                chat_id=chat_id,
-                tenant_id=auth.tenant_key,
-                approvals_needed=approvals,
-            )
-        raise
+    except GraphInterrupt as exc:
+        # HITL: graph paused for tool approval — don't persist messages yet
+        return build_interrupt_response(exc, chat_id, auth.tenant_key)
 
     response_text = result.get("final_response", "No response generated.")
     agents_used = result.get("active_agents", [])
@@ -70,12 +51,7 @@ async def send_chat_message(
     await app_ctx.chat_repo.add_message(chat_id, "user", prepared.message)
     await app_ctx.chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
 
-    # Auto-title from first message
-    if not prepared.history_rows:
-        title = prepared.message[:50].strip()
-        if len(prepared.message) > 50:
-            title += "…"
-        await app_ctx.chat_repo.update_title(chat_id, title)
+    await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows)
 
     auth_required = [name for name, ok in prepared.mcp_auth_status.items() if not ok]
     return ChatResponse(
@@ -107,12 +83,8 @@ async def upload_documents(
 
     if not isinstance(reader, VectorWriter):
         raise HTTPException(status_code=503, detail="Vector store does not support writing")
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
 
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth)
 
     scope = RAGScope(
         tenant_id=auth.tenant_key,

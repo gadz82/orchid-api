@@ -194,7 +194,7 @@ async def stream_chat_message(
 
         except Exception as exc:
             logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
-            yield _sse({"type": "error", "message": str(exc)[:200]})
+            yield _sse({"type": "error", "message": "An error occurred while processing your request."})
 
         # ── Final event with complete metadata ──
         full_response = "".join(full_response_parts) or "No response generated."
@@ -213,14 +213,11 @@ async def stream_chat_message(
 
         # ── Persist after streaming completes ──
         try:
+            from ._helpers import auto_title_if_first_message
+
             await app_ctx.chat_repo.add_message(chat_id, "user", prepared.message)
             await app_ctx.chat_repo.add_message(chat_id, "assistant", full_response, agents_used=agents_used)
-
-            if not prepared.history_rows:
-                title = prepared.message[:50].strip()
-                if len(prepared.message) > 50:
-                    title += "…"
-                await app_ctx.chat_repo.update_title(chat_id, title)
+            await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows)
         except Exception as exc:
             logger.error("[Stream] Persistence error: %s", exc, exc_info=True)
 

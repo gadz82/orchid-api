@@ -58,8 +58,15 @@ async def chat_legacy(
 
 
 @router.post("/index", response_model=IndexResponse)
-async def index_data(request: IndexRequest):
-    """Manually index test data into the vector store for a tenant."""
+async def index_data(
+    request: IndexRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+):
+    """Manually index test data into the vector store for a tenant.
+
+    Requires authentication.  In production, restrict to admin roles.
+    """
     from orchid_ai.core.repository import VectorWriter
 
     reader = app_ctx.runtime.get_reader()
