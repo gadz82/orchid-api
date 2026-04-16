@@ -73,6 +73,34 @@ async def stream_chat_message(
     agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
 
+    # Buffer for supervisor tokens between agent completions.
+    # We cannot tell if supervisor tokens are a sequential handoff or
+    # the final synthesis until the NEXT event arrives:
+    #   - Next event is an agent node → buffer was handoff → discard
+    #   - Next event is [Supervisor →] → buffer was handoff → discard
+    #   - Stream ends → buffer was synthesis → flush as tokens
+    _supervisor_buffer: list[str] = []
+
+    async def _flush_buffer_as_tokens():
+        """Emit buffered supervisor content as synthesis tokens."""
+        nonlocal full_response_parts
+        for chunk in _supervisor_buffer:
+            if chunk not in _emitted_content:
+                full_response_parts.append(chunk)
+                yield _sse({"type": "token", "content": chunk})
+        _supervisor_buffer.clear()
+
+    async def _discard_buffer_as_handoff():
+        """Emit buffered supervisor content as a handoff, then clear."""
+        combined = "".join(_supervisor_buffer).strip()
+        if combined:
+            cleaned = _clean_handoff(combined)
+            if cleaned and cleaned not in _seen_handoffs:
+                _seen_handoffs.add(cleaned)
+                _emitted_content.add(cleaned[:100])
+                yield _sse({"type": "handoff", "content": cleaned})
+        _supervisor_buffer.clear()
+
     async def event_generator():
         """Yield SSE events from the LangGraph stream.
 
@@ -80,8 +108,12 @@ async def stream_chat_message(
         response after all agents have completed.  Internal messages
         (routing decisions, agent prefixes, skill names) are suppressed.
 
-        Detection: synthesis happens when the supervisor node emits
-        content AFTER at least one agent has been seen.
+        Key insight: with ``stream_mode="messages"``, incremental LLM
+        tokens from the supervisor arrive WITHOUT the ``[Supervisor →]``
+        prefix — that prefix is added to the final assembled message.
+        We cannot tell if tokens are handoff or synthesis until the next
+        event reveals the context.  Solution: buffer supervisor tokens
+        and decide retroactively.
         """
         nonlocal agents_done
 
@@ -94,8 +126,14 @@ async def stream_chat_message(
             ):
                 node = metadata.get("langgraph_node", "")
 
-                # Track which agents are active and emit their results
+                # ── Agent node messages ────────────────────────
                 if node.endswith("_agent"):
+                    # If we had buffered supervisor tokens, they were a
+                    # sequential advance (handoff) — not synthesis.
+                    if _supervisor_buffer:
+                        async for event in _discard_buffer_as_handoff():
+                            yield event
+
                     agent_name = node.removesuffix("_agent")
                     if agent_name not in seen_agents:
                         seen_agents.add(agent_name)
@@ -112,10 +150,8 @@ async def stream_chat_message(
                                 clean = clean[len(prefix) :]
                             stripped = clean.strip()
                             if len(stripped) > 50 and " " in stripped:
-                                # Only emit once per agent (dedup streaming + final message)
                                 if agent_name not in agent_results:
                                     agent_results[agent_name] = stripped
-                                    # Emit a "done" status with a preview of the result
                                     preview = stripped[:200] + "…" if len(stripped) > 200 else stripped
                                     yield _sse(
                                         {
@@ -127,9 +163,9 @@ async def stream_chat_message(
                                     )
 
                     agents_done = True
-                    continue  # Don't stream agent messages as main tokens
+                    continue
 
-                # Only stream from the supervisor node
+                # ── Only process supervisor node ───────────────
                 if node != "supervisor":
                     continue
 
@@ -137,13 +173,16 @@ async def stream_chat_message(
                 if not content or not isinstance(content, str):
                     continue
 
-                # Skip routing JSON (structured output from first supervisor invocation)
+                # Skip routing JSON (structured output)
                 if content.strip().startswith("{"):
                     continue
 
-                # Skip internal [Supervisor] dispatch messages
+                # Skip internal [Supervisor] messages (final assembled)
                 if content.startswith("[Supervisor"):
                     if content.startswith("[Supervisor →"):
+                        # Discard any buffered tokens (they were the advance LLM call)
+                        _supervisor_buffer.clear()
+                        # Emit the handoff text
                         handoff_text = content.split("] ", 1)[-1] if "] " in content else content
                         handoff_text = _clean_handoff(handoff_text)
                         if handoff_text and handoff_text not in _seen_handoffs:
@@ -152,45 +191,41 @@ async def stream_chat_message(
                             yield _sse({"type": "handoff", "content": handoff_text})
                     continue
 
-                # Before agents have run, supervisor messages are routing noise — skip
+                # Before agents have run, skip all supervisor noise
                 if not agents_done:
                     continue
 
-                # Detect intermediate supervisor messages (sequential advance handoffs)
-                # These happen BETWEEN agent executions and are instructions for the next agent.
-                # They're NOT the final synthesis. Emit as handoff, not token.
-                _lower = content.lower()
-                is_intermediate = (
-                    "handoff message" in _lower
-                    or ("next step" in _lower and "agent" in _lower and len(content) < 500)
-                    or (content.strip().startswith('"') and "agent" in _lower and len(content) < 300)
-                    or ("please help" in _lower and "agent" in _lower and len(content) < 500)
-                    or ("the user" in _lower[:30] and len(content) < 400 and "order" not in _lower[:50])
-                )
-                if is_intermediate:
-                    cleaned = _clean_handoff(content)
-                    if cleaned and cleaned not in _seen_handoffs:
-                        _seen_handoffs.add(cleaned)
-                        _emitted_content.add(cleaned[:100])
-                        yield _sse({"type": "handoff", "content": cleaned})
-                    continue
-
-                # Skip content that was already emitted as a handoff/status
-                content_key = content[:100]
-                if content_key in _emitted_content:
-                    continue
-
-                # Only stream text content (not tool calls)
+                # Skip tool call messages
                 tool_calls = getattr(msg, "tool_calls", None)
                 if tool_calls:
                     continue
 
-                # Deduplicate: astream emits both incremental chunks and the
-                # final complete message.  Skip if we already sent this exact content.
-                if full_response_parts and content == full_response_parts[-1]:
-                    continue  # duplicate of the last emitted chunk
-                full_response_parts.append(content)
-                yield _sse({"type": "token", "content": content})
+                # Skip already-emitted content
+                if content[:100] in _emitted_content:
+                    continue
+
+                # Deduplicate: astream emits incremental chunks AND the
+                # final assembled message.  The final message contains ALL
+                # the chunk text, so skip it if the buffer already has content
+                # that this message would duplicate.
+                if _supervisor_buffer:
+                    # If this content is longer than any single buffered chunk,
+                    # it's likely the final assembled message — skip it.
+                    buffered_combined = "".join(_supervisor_buffer)
+                    if content == buffered_combined or buffered_combined.startswith(content):
+                        continue
+                    # Also skip if it's identical to the last buffered chunk
+                    if content == _supervisor_buffer[-1]:
+                        continue
+
+                # Buffer supervisor tokens — we'll decide whether they're
+                # handoff or synthesis when the next event arrives.
+                _supervisor_buffer.append(content)
+
+            # ── Stream ended: flush buffer as synthesis ─────────
+            if _supervisor_buffer:
+                async for event in _flush_buffer_as_tokens():
+                    yield event
 
         except Exception as exc:
             logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
