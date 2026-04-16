@@ -67,6 +67,7 @@ async def stream_chat_message(
 
     # Track active agents and full response for persistence
     seen_agents: set[str] = set()
+    _seen_agent_results: set[str] = set()  # dedup agent results
     agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
 
@@ -89,14 +90,40 @@ async def stream_chat_message(
             ):
                 node = metadata.get("langgraph_node", "")
 
-                # Track which agents are active
+                # Track which agents are active and capture their final response
                 if node.endswith("_agent"):
                     agent_name = node.removesuffix("_agent")
                     if agent_name not in seen_agents:
                         seen_agents.add(agent_name)
                         yield _sse({"type": "status", "agent": agent_name, "status": "started"})
+
+                    # Capture the agent's final text response (the [AgentName Agent] message)
+                    content = getattr(msg, "content", "")
+                    if content and isinstance(content, str):
+                        tool_calls = getattr(msg, "tool_calls", None)
+                        if not tool_calls:
+                            # Strip the "[AgentName Agent]\n" prefix if present
+                            clean = content
+                            prefix = f"[{agent_name.title()} Agent]\n"
+                            if clean.startswith(prefix):
+                                clean = clean[len(prefix) :]
+                            # Only emit if it's substantial (skip skill names, short noise)
+                            stripped = clean.strip()
+                            if len(stripped) > 50 and " " in stripped:
+                                # Deduplicate: the same content may come twice (streaming + final)
+                                key = f"{agent_name}:{clean[:100]}"
+                                if key not in _seen_agent_results:
+                                    _seen_agent_results.add(key)
+                                    yield _sse(
+                                        {
+                                            "type": "agent_result",
+                                            "agent": agent_name,
+                                            "content": clean.strip(),
+                                        }
+                                    )
+
                     agents_done = True
-                    continue  # Don't stream agent internal messages
+                    continue  # Don't stream agent messages as main tokens
 
                 # Only stream from the supervisor AFTER agents have run (= synthesis)
                 # OR when the supervisor gives a direct response (no agents activated)
