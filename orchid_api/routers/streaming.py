@@ -86,8 +86,10 @@ async def stream_chat_message(
         nonlocal agents_done
 
         try:
+            graph_config = {"configurable": {"thread_id": chat_id}}
             async for msg, metadata in app_ctx.graph.astream(
                 prepared.initial_state,
+                config=graph_config,
                 stream_mode="messages",
             ):
                 node = metadata.get("langgraph_node", "")
