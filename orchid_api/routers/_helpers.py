@@ -1,9 +1,10 @@
-"""Shared helpers for message and streaming routers."""
+"""Shared helpers for message, streaming, and resume routers."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -11,9 +12,64 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from orchid_ai.core.state import AuthContext
 
 from ..context import app_ctx
+from ..models import InterruptResponse, ToolApprovalRequest
 from ..settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── Shared ownership verification ─────────────────────────────
+
+
+async def verify_chat_ownership(chat_id: str, auth: AuthContext) -> Any:
+    """Verify the chat exists and belongs to the authenticated user+tenant.
+
+    Returns the chat object on success; raises HTTP 404 on failure.
+    """
+    if app_ctx.chat_repo is None:
+        raise HTTPException(status_code=503, detail="Chat repository not initialised")
+    chat = await app_ctx.chat_repo.get_chat(chat_id)
+    if not chat or chat.user_id != auth.user_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
+
+
+# ── Auto-titling ──────────────────────────────────────────────
+
+
+async def auto_title_if_first_message(chat_id: str, message: str, history_rows: list) -> None:
+    """Set the chat title from the first user message (if no prior messages)."""
+    if history_rows:
+        return
+    title = message[:50].strip()
+    if len(message) > 50:
+        title += "..."
+    await app_ctx.chat_repo.update_title(chat_id, title)
+
+
+# ── GraphInterrupt → InterruptResponse conversion ────────────
+
+
+def build_interrupt_response(exc: Exception, chat_id: str, tenant_key: str) -> InterruptResponse:
+    """Convert a ``GraphInterrupt`` exception into an ``InterruptResponse``.
+
+    Extracts tool approval requests from the exception's interrupt objects.
+    """
+    interrupts = exc.args[0] if exc.args else []
+    approvals = [
+        ToolApprovalRequest(
+            tool=i.value.get("tool", "") if isinstance(i.value, dict) else str(i.value),
+            args=i.value.get("args", {}) if isinstance(i.value, dict) else {},
+            agent=i.value.get("agent", "") if isinstance(i.value, dict) else "",
+            interrupt_id=str(i.id),
+        )
+        for i in interrupts
+    ]
+    return InterruptResponse(
+        chat_id=chat_id,
+        tenant_id=tenant_key,
+        approvals_needed=approvals,
+    )
 
 
 @dataclass
@@ -41,13 +97,8 @@ async def prepare_graph_state(
     """
     if app_ctx.graph is None:
         raise HTTPException(status_code=503, detail="Graph not initialised")
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
 
-    # Verify chat ownership
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth)
 
     # ── Process attached files ───────────────────────────────
     file_context_parts: list[str] = []

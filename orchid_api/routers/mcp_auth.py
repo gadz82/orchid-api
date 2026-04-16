@@ -262,7 +262,7 @@ async def oauth_callback(
             "<html><body><h2>Authorization successful</h2>"
             "<p>You can close this window.</p>"
             "<script>"
-            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, "*");'
+            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, window.location.origin);'
             "setTimeout(function() { window.close(); }, 1000);"
             "</script></body></html>"
         )
