@@ -67,10 +67,21 @@ async def stream_chat_message(
 
     # Track active agents and full response for persistence
     seen_agents: set[str] = set()
+    agents_done: bool = False  # True after at least one agent has returned to supervisor
     full_response_parts: list[str] = []
 
     async def event_generator():
-        """Yield SSE events from the LangGraph stream."""
+        """Yield SSE events from the LangGraph stream.
+
+        We ONLY stream the supervisor's **synthesis** step — the final
+        response after all agents have completed.  Internal messages
+        (routing decisions, agent prefixes, skill names) are suppressed.
+
+        Detection: synthesis happens when the supervisor node emits
+        content AFTER at least one agent has been seen.
+        """
+        nonlocal agents_done
+
         try:
             async for msg, metadata in app_ctx.graph.astream(
                 prepared.initial_state,
@@ -84,16 +95,41 @@ async def stream_chat_message(
                     if agent_name not in seen_agents:
                         seen_agents.add(agent_name)
                         yield _sse({"type": "status", "agent": agent_name, "status": "started"})
+                    agents_done = True
+                    continue  # Don't stream agent internal messages
 
-                # Stream tokens from the supervisor synthesis (the final response)
-                # Also stream from agents that produce direct text responses
+                # Only stream from the supervisor AFTER agents have run (= synthesis)
+                # OR when the supervisor gives a direct response (no agents activated)
+                if node != "supervisor":
+                    continue
+                # Skip the routing step (first supervisor invocation, before any agent runs)
+                # Direct responses are detected by the supervisor setting final_response
+                # without activating agents — we let those through
+                if not agents_done:
+                    # Check if this looks like a direct response (not a routing JSON)
+                    c = getattr(msg, "content", "")
+                    if c and c.strip().startswith("{"):
+                        continue  # routing JSON — skip
+
                 content = getattr(msg, "content", "")
-                if content and isinstance(content, str):
-                    # Only stream text content (not tool calls)
-                    tool_calls = getattr(msg, "tool_calls", None)
-                    if not tool_calls:
-                        full_response_parts.append(content)
-                        yield _sse({"type": "token", "content": content})
+                if not content or not isinstance(content, str):
+                    continue
+
+                # Skip internal supervisor messages
+                if content.startswith("[Supervisor"):
+                    continue
+
+                # Only stream text content (not tool calls)
+                tool_calls = getattr(msg, "tool_calls", None)
+                if tool_calls:
+                    continue
+
+                # Deduplicate: astream emits both incremental chunks and the
+                # final complete message.  Skip if we already sent this exact content.
+                if full_response_parts and content == full_response_parts[-1]:
+                    continue  # duplicate of the last emitted chunk
+                full_response_parts.append(content)
+                yield _sse({"type": "token", "content": content})
 
         except Exception as exc:
             logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
