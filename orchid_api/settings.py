@@ -24,52 +24,6 @@ from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
-# ── Nested YAML path → flat env var mapping ────────────────────
-_YAML_TO_ENV: dict[tuple[str, str], str] = {
-    # ── agents ────────────────────────────────────────────────
-    ("agents", "config_path"): "AGENTS_CONFIG_PATH",
-    # ── llm ───────────────────────────────────────────────────
-    ("llm", "model"): "LITELLM_MODEL",
-    ("llm", "ollama_api_base"): "OLLAMA_API_BASE",
-    ("llm", "groq_api_key"): "GROQ_API_KEY",
-    ("llm", "gemini_api_key"): "GEMINI_API_KEY",
-    ("llm", "anthropic_api_key"): "ANTHROPIC_API_KEY",
-    ("llm", "openai_api_key"): "OPENAI_API_KEY",
-    # ── auth ──────────────────────────────────────────────────
-    ("auth", "dev_bypass"): "DEV_AUTH_BYPASS",
-    ("auth", "identity_resolver_class"): "IDENTITY_RESOLVER_CLASS",
-    ("auth", "domain"): "AUTH_DOMAIN",
-    # ── startup ──────────────────────────────────────────────
-    ("startup", "hook"): "STARTUP_HOOK",
-    # ── rag ───────────────────────────────────────────────────
-    ("rag", "vector_backend"): "VECTOR_BACKEND",
-    ("rag", "qdrant_url"): "QDRANT_URL",
-    ("rag", "embedding_model"): "EMBEDDING_MODEL",
-    ("rag", "openai_api_key"): "OPENAI_API_KEY",
-    ("rag", "gemini_api_key"): "GEMINI_API_KEY",
-    # ── upload ────────────────────────────────────────────────
-    ("upload", "vision_model"): "VISION_MODEL",
-    ("upload", "namespace"): "UPLOAD_NAMESPACE",
-    ("upload", "max_size_mb"): "UPLOAD_MAX_SIZE_MB",
-    ("upload", "chunk_size"): "CHUNK_SIZE",
-    ("upload", "chunk_overlap"): "CHUNK_OVERLAP",
-    # ── storage ───────────────────────────────────────────────
-    ("storage", "class"): "CHAT_STORAGE_CLASS",
-    ("storage", "dsn"): "CHAT_DB_DSN",
-    # ── mcp ───────────────────────────────────────────────────
-    ("mcp", "catalog_url"): "MCP_CATALOG_URL",
-    ("mcp", "notifications_url"): "MCP_NOTIFICATIONS_URL",
-    # ── mcp_auth ──────────────────────────────────────────────
-    ("mcp_auth", "token_store_class"): "MCP_TOKEN_STORE_CLASS",
-    ("mcp_auth", "token_store_dsn"): "MCP_TOKEN_STORE_DSN",
-    # ── api ───────────────────────────────────────────────────
-    ("api", "base_url"): "API_BASE_URL",
-    # ── tracing ───────────────────────────────────────────────
-    ("tracing", "langsmith_tracing"): "LANGSMITH_TRACING",
-    ("tracing", "langsmith_api_key"): "LANGSMITH_API_KEY",
-    ("tracing", "langsmith_project"): "LANGSMITH_PROJECT",
-}
-
 
 def _apply_yaml_config() -> None:
     """Load ``orchid.yml`` and export values as env vars (if not already set)."""
@@ -77,40 +31,9 @@ def _apply_yaml_config() -> None:
     if not config_path:
         return
 
-    try:
-        import yaml
+    from orchid_ai.config.yaml_env import apply_yaml_to_env
 
-        with open(config_path) as f:
-            data = yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        logger.warning("[Settings] ORCHID_CONFIG=%s not found — ignoring", config_path)
-        return
-
-    applied = 0
-    total = 0
-    for section, body in data.items():
-        if not isinstance(body, dict):
-            continue
-        for key, value in body.items():
-            total += 1
-            env_var = _YAML_TO_ENV.get((section, key))
-            if env_var is None:
-                logger.debug(
-                    "[Settings] Unknown YAML key %s.%s — skipping",
-                    section,
-                    key,
-                )
-                continue
-            if env_var not in os.environ:
-                os.environ[env_var] = str(value)
-                applied += 1
-
-    logger.info(
-        "[Settings] Loaded %d/%d values from %s (env overrides take precedence)",
-        applied,
-        total,
-        config_path,
-    )
+    apply_yaml_to_env(config_path)
 
 
 # Apply once at import time — before any Settings() call.
@@ -125,10 +48,12 @@ class Settings(BaseSettings):
     auth_domain: str = ""  # default domain for identity resolution
 
     # ── LLM ───────────────────────────────────────────────────
+    # Provider API keys (GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
+    # OPENAI_API_KEY, …) are read directly by LiteLLM / the LangChain
+    # chat-model integrations from the environment — there is no need
+    # to re-declare them here.  Setting them via docker-compose or a
+    # ``.env`` file is sufficient.
     litellm_model: str = "ollama/llama3.2"
-    groq_api_key: str = ""
-    gemini_api_key: str = ""
-    anthropic_api_key: str = ""
 
     # ── Agent config (ADR-016) ──────────────────────────────────
     agents_config_path: str = "agents.yaml"
@@ -139,7 +64,6 @@ class Settings(BaseSettings):
 
     # ── Embeddings ──────────────────────────────────────────
     embedding_model: str = "text-embedding-3-small"
-    openai_api_key: str = ""
 
     # ── Chat persistence ───────────────────────────────────
     chat_storage_class: str = "orchid_ai.persistence.sqlite.SQLiteChatStorage"
@@ -158,6 +82,13 @@ class Settings(BaseSettings):
     # ── Startup hook ─────────────────────────────────────────
     startup_hook: str = ""
 
+    # ── Admin endpoints ──────────────────────────────────────
+    # The legacy ``POST /index`` endpoint can trigger a full reindex —
+    # disabled by default so a plain authenticated user cannot DOS the
+    # vector store.  Flip to ``true`` (via env or orchid.yml) for dev /
+    # ops workflows.
+    allow_index_endpoint: bool = False
+
     # ── MCP ───────────────────────────────────────────────────
     mcp_catalog_url: str = ""
     mcp_notifications_url: str = ""
@@ -166,8 +97,26 @@ class Settings(BaseSettings):
     mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
 
+    # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
+    # Built-in types: "memory" (default, single-instance).  Swap for a
+    # dotted class path or registered type (e.g. "redis") for multi-worker
+    # deployments so state survives across replicas.
+    oauth_state_store_class: str = "memory"
+    oauth_state_store_dsn: str = ""
+    oauth_state_ttl_seconds: int = 600
+
+    # ── Checkpointer (LangGraph state persistence) ────────────
+    checkpointer_type: str = ""  # "memory", "sqlite", "postgres", or dotted class path; empty = disabled
+    checkpointer_dsn: str = ""  # connection string or file path
+
     # ── API base URL (for OAuth callback construction) ───────
     api_base_url: str = "http://localhost:8000"
+
+    # ── CORS ───────────────────────────────────────────────────
+    # Comma-separated list of allowed browser origins.  Default keeps
+    # backward compat with the demo setups (orchid-frontend at :3000
+    # on localhost and inside the Docker ``frontend`` service).
+    cors_allowed_origins: str = "http://localhost:3000,http://frontend:3000"
 
     # ── Tracing ───────────────────────────────────────────────
     langsmith_api_key: str = ""
