@@ -115,11 +115,23 @@ async def stream_chat_message(
 
         try:
             graph_config = {"configurable": {"thread_id": chat_id}}
-            async for msg, metadata in graph.astream(
+            # ``direct_final`` captures the supervisor's direct response
+            # (when it answers without dispatching agents) from the
+            # ``values`` stream — those messages aren't emitted as
+            # incremental tokens so we need state-level access.
+            direct_final: str | None = None
+            async for mode, payload in graph.astream(
                 prepared.initial_state,
                 config=graph_config,
-                stream_mode="messages",
+                stream_mode=["messages", "values"],
             ):
+                if mode == "values":
+                    fr = payload.get("final_response") if isinstance(payload, dict) else None
+                    if fr:
+                        direct_final = fr
+                    continue
+
+                msg, metadata = payload
                 node = metadata.get("langgraph_node", "")
 
                 # ── Agent node messages ────────────────────────
@@ -195,6 +207,14 @@ async def stream_chat_message(
             # ── Stream ended: flush buffer as synthesis ─────────
             for ev in buffer.flush_as_tokens():
                 yield emit(ev)
+
+            # ── Direct-response fallback ─────────────────────────
+            # When the supervisor answers directly (no agents dispatched),
+            # ``final_response`` is set synchronously without streamed
+            # tokens.  The ``values`` stream surfaces it so we emit
+            # it as a single token event for the client UI to render.
+            if not full_response_parts and not seen_agents and direct_final:
+                yield emit(BufferedToken(kind="token", content=direct_final))
 
         except Exception as exc:
             logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
