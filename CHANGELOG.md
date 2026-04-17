@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.1 (2026-04-17)
+
+### Bug Fixes
+
+- **streaming**: Fix fallback for supervisor's direct final responses.
+  ([`da18e35`](https://github.com/gadz82/orchid-api/commit/da18e35f7c3ec93b1b94eb1f5b35975379e86999))
+
+
 ## v1.1.0 (2026-04-17)
 
 ### Bug Fixes
