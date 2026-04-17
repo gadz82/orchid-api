@@ -1,21 +1,41 @@
-"""Tests for orchid_api.routers.chats — CRUD endpoints."""
+"""Tests for orchid_api.routers.chats — CRUD endpoints.
+
+Handlers now accept ``chat_repo`` as an injected FastAPI dependency
+(``Depends(get_chat_repo)``) — tests pass the mock directly through
+that parameter instead of patching ``app_ctx``.  The 503 null-check is
+covered separately by exercising ``get_chat_repo`` itself.
+"""
 
 from __future__ import annotations
-
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from orchid_ai.core.state import AuthContext
 
-from orchid_api.routers.chats import create_chat, delete_chat, get_messages, list_chats
+from orchid_api.context import app_ctx, get_chat_repo
 from orchid_api.models import CreateChatRequest
+from orchid_api.routers.chats import create_chat, delete_chat, get_messages, list_chats
 
 
 @pytest.fixture
 def auth():
     return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+
+
+# ── get_chat_repo dependency ───────────────────────────────
+
+
+class TestGetChatRepoDep:
+    def test_raises_503_when_unset(self):
+        original = app_ctx.chat_repo
+        app_ctx.chat_repo = None
+        try:
+            with pytest.raises(HTTPException) as exc:
+                get_chat_repo()
+            assert exc.value.status_code == 503
+        finally:
+            app_ctx.chat_repo = original
 
 
 # ── create_chat ────────────────────────────────────────────
@@ -24,29 +44,20 @@ def auth():
 @pytest.mark.asyncio
 async def test_create_chat_success(auth, mock_chat_repo, sample_session):
     mock_chat_repo.create_chat.return_value = sample_session
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        result = await create_chat(CreateChatRequest(title="Test"), auth=auth)
+    result = await create_chat(
+        CreateChatRequest(title="Test"),
+        auth=auth,
+        chat_repo=mock_chat_repo,
+    )
     assert result.id == "chat-001"
     assert result.title == "Test Chat"
     mock_chat_repo.create_chat.assert_called_once_with(tenant_id="t1", user_id="u1", title="Test")
 
 
 @pytest.mark.asyncio
-async def test_create_chat_no_repo(auth):
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = None
-        with pytest.raises(HTTPException) as exc:
-            await create_chat(CreateChatRequest(title="Test"), auth=auth)
-        assert exc.value.status_code == 503
-
-
-@pytest.mark.asyncio
 async def test_create_chat_default_title(auth, mock_chat_repo, sample_session):
     mock_chat_repo.create_chat.return_value = sample_session
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        await create_chat(CreateChatRequest(), auth=auth)
+    await create_chat(CreateChatRequest(), auth=auth, chat_repo=mock_chat_repo)
     mock_chat_repo.create_chat.assert_called_once_with(tenant_id="t1", user_id="u1", title="New chat")
 
 
@@ -56,18 +67,14 @@ async def test_create_chat_default_title(auth, mock_chat_repo, sample_session):
 @pytest.mark.asyncio
 async def test_list_chats_empty(auth, mock_chat_repo):
     mock_chat_repo.list_chats.return_value = []
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        result = await list_chats(auth=auth)
+    result = await list_chats(auth=auth, chat_repo=mock_chat_repo)
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_list_chats_returns_sessions(auth, mock_chat_repo, sample_session):
     mock_chat_repo.list_chats.return_value = [sample_session]
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        result = await list_chats(auth=auth)
+    result = await list_chats(auth=auth, chat_repo=mock_chat_repo)
     assert len(result) == 1
     assert result[0].id == "chat-001"
 
@@ -79,9 +86,7 @@ async def test_list_chats_returns_sessions(auth, mock_chat_repo, sample_session)
 async def test_get_messages_success(auth, mock_chat_repo, sample_session, sample_message):
     mock_chat_repo.get_chat.return_value = sample_session
     mock_chat_repo.get_messages.return_value = [sample_message]
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        result = await get_messages("chat-001", auth=auth)
+    result = await get_messages("chat-001", auth=auth, chat_repo=mock_chat_repo)
     assert len(result) == 1
     assert result[0].content == "Hello"
 
@@ -89,22 +94,18 @@ async def test_get_messages_success(auth, mock_chat_repo, sample_session, sample
 @pytest.mark.asyncio
 async def test_get_messages_chat_not_found(auth, mock_chat_repo):
     mock_chat_repo.get_chat.return_value = None
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        with pytest.raises(HTTPException) as exc:
-            await get_messages("nonexistent", auth=auth)
-        assert exc.value.status_code == 404
+    with pytest.raises(HTTPException) as exc:
+        await get_messages("nonexistent", auth=auth, chat_repo=mock_chat_repo)
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_get_messages_wrong_user(auth, mock_chat_repo, sample_session):
     sample_session.user_id = "other-user"
     mock_chat_repo.get_chat.return_value = sample_session
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        with pytest.raises(HTTPException) as exc:
-            await get_messages("chat-001", auth=auth)
-        assert exc.value.status_code == 404
+    with pytest.raises(HTTPException) as exc:
+        await get_messages("chat-001", auth=auth, chat_repo=mock_chat_repo)
+    assert exc.value.status_code == 404
 
 
 # ── delete_chat ────────────────────────────────────────────
@@ -113,9 +114,7 @@ async def test_get_messages_wrong_user(auth, mock_chat_repo, sample_session):
 @pytest.mark.asyncio
 async def test_delete_chat_success(auth, mock_chat_repo, sample_session):
     mock_chat_repo.get_chat.return_value = sample_session
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        result = await delete_chat("chat-001", auth=auth)
+    result = await delete_chat("chat-001", auth=auth, chat_repo=mock_chat_repo)
     assert result["status"] == "deleted"
     mock_chat_repo.delete_chat.assert_called_once_with("chat-001")
 
@@ -123,8 +122,6 @@ async def test_delete_chat_success(auth, mock_chat_repo, sample_session):
 @pytest.mark.asyncio
 async def test_delete_chat_not_found(auth, mock_chat_repo):
     mock_chat_repo.get_chat.return_value = None
-    with patch("orchid_api.routers.chats.app_ctx") as ctx:
-        ctx.chat_repo = mock_chat_repo
-        with pytest.raises(HTTPException) as exc:
-            await delete_chat("nonexistent", auth=auth)
-        assert exc.value.status_code == 404
+    with pytest.raises(HTTPException) as exc:
+        await delete_chat("nonexistent", auth=auth, chat_repo=mock_chat_repo)
+    assert exc.value.status_code == 404

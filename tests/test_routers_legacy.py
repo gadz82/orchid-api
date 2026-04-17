@@ -49,57 +49,54 @@ async def test_health_graph_not_ready():
 
 @pytest.mark.asyncio
 async def test_chat_legacy_success(auth):
-    mock_graph = AsyncMock()
-    mock_graph.ainvoke.return_value = {
+    graph = AsyncMock()
+    graph.ainvoke.return_value = {
         "final_response": "Hello back!",
         "active_agents": ["assistant"],
     }
-    with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        ctx.graph = mock_graph
-        result = await chat_legacy(ChatRequest(message="Hello"), auth=auth)
+    result = await chat_legacy(ChatRequest(message="Hello"), auth=auth, graph=graph)
     assert result.response == "Hello back!"
     assert result.agents_used == ["assistant"]
     assert result.tenant_id == "t1"
 
 
 @pytest.mark.asyncio
-async def test_chat_legacy_no_graph(auth):
-    with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        ctx.graph = None
-        with pytest.raises(HTTPException) as exc:
-            await chat_legacy(ChatRequest(message="Hi"), auth=auth)
-        assert exc.value.status_code == 503
-
-
-@pytest.mark.asyncio
 async def test_chat_legacy_uses_provided_chat_id(auth):
-    mock_graph = AsyncMock()
-    mock_graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
-    with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        ctx.graph = mock_graph
-        result = await chat_legacy(ChatRequest(message="Hi", chat_id="custom-id"), auth=auth)
+    graph = AsyncMock()
+    graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
+    result = await chat_legacy(ChatRequest(message="Hi", chat_id="custom-id"), auth=auth, graph=graph)
     assert result.chat_id == "custom-id"
 
 
 @pytest.mark.asyncio
 async def test_chat_legacy_generates_chat_id(auth):
-    mock_graph = AsyncMock()
-    mock_graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
-    with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        ctx.graph = mock_graph
-        result = await chat_legacy(ChatRequest(message="Hi"), auth=auth)
+    graph = AsyncMock()
+    graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
+    result = await chat_legacy(ChatRequest(message="Hi"), auth=auth, graph=graph)
     assert len(result.chat_id) == 36  # UUID format
 
 
 # ── index_data ─────────────────────────────────────────────
 
 
+def _runtime(reader) -> MagicMock:
+    rt = MagicMock()
+    rt.get_reader.return_value = reader
+    return rt
+
+
 @pytest.mark.asyncio
-async def test_index_no_writer():
-    """When runtime.get_reader() returns a non-VectorWriter, index_data should 503."""
-    with patch("orchid_api.routers.legacy.app_ctx") as ctx:
-        # Return a plain object that is NOT a VectorWriter instance
-        ctx.runtime.get_reader.return_value = object()
-        with pytest.raises(HTTPException) as exc:
-            await index_data(IndexRequest())
-        assert exc.value.status_code == 503
+async def test_index_disabled_by_default(auth):
+    """The /index endpoint is disabled by default (allow_index_endpoint=False)."""
+    with pytest.raises(HTTPException) as exc:
+        await index_data(IndexRequest(), auth=auth, settings=Settings(), runtime=_runtime(object()))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_index_no_writer(auth):
+    """When enabled but reader isn't a VectorWriter, index_data should 503."""
+    settings = Settings(allow_index_endpoint=True)
+    with pytest.raises(HTTPException) as exc:
+        await index_data(IndexRequest(), auth=auth, settings=settings, runtime=_runtime(object()))
+    assert exc.value.status_code == 503

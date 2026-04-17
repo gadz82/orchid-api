@@ -14,33 +14,32 @@ import hashlib
 import logging
 import secrets
 import time
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from orchid_ai.core.mcp import MCPTokenRecord
+from orchid_ai.core.mcp import MCPTokenRecord, MCPTokenStore
 from orchid_ai.core.state import AuthContext
+from orchid_ai.mcp.oauth_state import OAuthPendingState, OAuthStateStore
+from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
-from ..context import app_ctx
+from ..context import (
+    get_mcp_token_store,
+    get_mcp_token_store_optional,
+    get_oauth_state_store,
+    get_runtime,
+)
 from ..settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mcp/auth", tags=["mcp-auth"])
 
-# ── In-memory PKCE / CSRF state (single-instance; swap for Redis in prod) ──
-_oauth_pending: dict[str, dict[str, Any]] = {}
-_STATE_TTL = 600  # 10 minutes
-
-
-def _clean_expired_states() -> None:
-    """Remove expired entries (called lazily on access)."""
-    now = time.time()
-    expired = [k for k, v in _oauth_pending.items() if now - v.get("created_at", 0) > _STATE_TTL]
-    for k in expired:
-        del _oauth_pending[k]
+# Optional-vs-strict asymmetry: ``list_mcp_auth_servers`` / ``oauth_callback``
+# tolerate a missing token store (read-only / best-effort paths), while
+# ``revoke_token`` uses the strict :func:`get_mcp_token_store` dep — you
+# cannot revoke a token that was never saved, so 503 is the right signal.
 
 
 # ── PKCE helpers ──────────────────────────────────────────────
@@ -61,13 +60,14 @@ def _generate_code_challenge(verifier: str) -> str:
 @router.get("/servers")
 async def list_mcp_auth_servers(
     auth: AuthContext = Depends(get_auth_context),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """List all MCP servers that require OAuth and the current user's authorization status."""
-    registry = app_ctx.runtime.mcp_auth_registry
+    registry = runtime.mcp_auth_registry
     if not registry or registry.empty:
         return []
 
-    store = app_ctx.mcp_token_store
     results = []
     for name, info in registry.oauth_servers.items():
         authorized = False
@@ -95,9 +95,11 @@ async def get_authorize_url(
     server_name: str,
     auth: AuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    state_store: OAuthStateStore = Depends(get_oauth_state_store),
 ):
     """Generate an OAuth authorization URL for a specific MCP server."""
-    registry = app_ctx.runtime.mcp_auth_registry
+    registry = runtime.mcp_auth_registry
     if not registry:
         raise HTTPException(status_code=404, detail="No MCP auth registry configured")
 
@@ -122,15 +124,17 @@ async def get_authorize_url(
     state = secrets.token_urlsafe(32)
 
     # Store pending state
-    _clean_expired_states()
-    _oauth_pending[state] = {
-        "server_name": server_name,
-        "tenant_id": auth.tenant_key,
-        "user_id": auth.user_id,
-        "code_verifier": code_verifier,
-        "token_endpoint": token_endpoint,
-        "created_at": time.time(),
-    }
+    await state_store.put(
+        state,
+        OAuthPendingState(
+            server_name=server_name,
+            tenant_id=auth.tenant_key,
+            user_id=auth.user_id,
+            code_verifier=code_verifier,
+            token_endpoint=token_endpoint or "",
+            created_at=time.time(),
+        ),
+    )
 
     redirect_uri = f"{settings.api_base_url}/mcp/auth/callback"
 
@@ -157,6 +161,9 @@ async def oauth_callback(
     state: str = Query(default=""),
     error: str = Query(default=""),
     settings: Settings = Depends(get_settings),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    state_store: OAuthStateStore = Depends(get_oauth_state_store),
+    token_store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """OAuth callback — exchanges code for tokens and stores them.
 
@@ -176,16 +183,15 @@ async def oauth_callback(
             status_code=400,
         )
 
-    _clean_expired_states()
-    pending = _oauth_pending.pop(state, None)
+    pending = await state_store.pop(state)
     if not pending:
         return HTMLResponse(
             content="<html><body><h2>Invalid or expired state</h2><script>window.close();</script></body></html>",
             status_code=400,
         )
 
-    server_name = pending["server_name"]
-    registry = app_ctx.runtime.mcp_auth_registry
+    server_name = pending.server_name
+    registry = runtime.mcp_auth_registry
     if not registry:
         return HTMLResponse(
             content="<html><body><h2>Server configuration error</h2><script>window.close();</script></body></html>",
@@ -200,7 +206,7 @@ async def oauth_callback(
         )
 
     # Exchange code for tokens
-    token_endpoint = pending.get("token_endpoint") or server_info.token_endpoint
+    token_endpoint = pending.token_endpoint or server_info.token_endpoint
     if not token_endpoint and server_info.issuer:
         endpoints = await _discover_oidc_endpoints(server_info.issuer)
         token_endpoint = endpoints.get("token_endpoint", "")
@@ -224,7 +230,7 @@ async def oauth_callback(
                     "code": code,
                     "redirect_uri": redirect_uri,
                     "client_id": server_info.client_id,
-                    "code_verifier": pending["code_verifier"],
+                    "code_verifier": pending.code_verifier,
                 },
             )
             resp.raise_for_status()
@@ -241,8 +247,8 @@ async def oauth_callback(
     now = time.time()
     record = MCPTokenRecord(
         server_name=server_name,
-        tenant_id=pending["tenant_id"],
-        user_id=pending["user_id"],
+        tenant_id=pending.tenant_id,
+        user_id=pending.user_id,
         access_token=data["access_token"],
         refresh_token=data.get("refresh_token", ""),
         expires_at=now + data.get("expires_in", 3600),
@@ -251,10 +257,9 @@ async def oauth_callback(
         updated_at=now,
     )
 
-    store = app_ctx.mcp_token_store
-    if store:
-        await store.save_token(record)
-        logger.info("[MCP OAuth] Token stored for server '%s', user '%s'", server_name, pending["user_id"])
+    if token_store is not None:
+        await token_store.save_token(record)
+        logger.info("[MCP OAuth] Token stored for server '%s', user '%s'", server_name, pending.user_id)
 
     # Return HTML that notifies the opener window and closes the popup
     return HTMLResponse(
@@ -262,7 +267,7 @@ async def oauth_callback(
             "<html><body><h2>Authorization successful</h2>"
             "<p>You can close this window.</p>"
             "<script>"
-            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, "*");'
+            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, window.location.origin);'
             "setTimeout(function() { window.close(); }, 1000);"
             "</script></body></html>"
         )
@@ -273,12 +278,9 @@ async def oauth_callback(
 async def revoke_token(
     server_name: str,
     auth: AuthContext = Depends(get_auth_context),
+    store: MCPTokenStore = Depends(get_mcp_token_store),
 ):
     """Delete the stored OAuth token for the authenticated user and specified server."""
-    store = app_ctx.mcp_token_store
-    if not store:
-        raise HTTPException(status_code=503, detail="Token store not configured")
-
     deleted = await store.delete_token(auth.tenant_key, auth.user_id, server_name)
     if not deleted:
         raise HTTPException(status_code=404, detail="No token found for this server")

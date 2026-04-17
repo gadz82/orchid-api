@@ -19,23 +19,12 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from orchid_ai.config.loader import load_config
-from orchid_ai.core.repository import VectorStoreAdmin
-from orchid_ai.graph.graph import build_graph
-from orchid_ai.persistence.factory import build_chat_storage
-from orchid_ai.persistence.mcp_token_factory import build_mcp_token_store
-from orchid_ai.rag.factory import build_reader
-from orchid_ai.runtime import OrchidRuntime
-from orchid_ai.utils import import_class
-
-from .context import app_ctx
-from .routers import chats, legacy, messages, mcp_auth, sharing
+from .lifecycle import setup_orchid, teardown_orchid
+from .routers import chats, legacy, messages, mcp_auth, resume, sharing, streaming
 from .settings import get_settings
-from .tracing import configure_tracing
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,92 +35,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Lifespan ────────────────────────────────────────────────
+# ── Lifespan (delegates to lifecycle helpers) ──────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build graph and HTTP client once at startup, clean up on shutdown."""
-    settings = get_settings()
+    """Build graph and HTTP client once at startup, clean up on shutdown.
 
-    # ── LangSmith tracing (must be configured BEFORE graph build) ──
-    configure_tracing(
-        enabled=settings.langsmith_tracing,
-        api_key=settings.langsmith_api_key,
-        project=settings.langsmith_project,
-    )
-
-    app_ctx.http_client = httpx.AsyncClient(timeout=15)
-
-    # ── Identity resolver (injectable — consumers provide their own) ──
-    if settings.identity_resolver_class:
-        resolver_cls = import_class(settings.identity_resolver_class)
-        app_ctx.identity_resolver = resolver_cls(http_client=app_ctx.http_client)
-        logger.info("[API] Identity resolver: %s", settings.identity_resolver_class)
-    else:
-        app_ctx.identity_resolver = None
-        logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
-
-    # ── OrchidRuntime — single dependency bag for the framework ──
-    reader = build_reader(
-        vector_backend=settings.vector_backend,
-        qdrant_url=settings.qdrant_url,
-        embedding_model=settings.embedding_model,
-    )
-    app_ctx.runtime = OrchidRuntime(
-        default_model=settings.litellm_model,
-        reader=reader,
-    )
-
-    # ── Chat persistence ──
-    app_ctx.chat_repo = build_chat_storage(
-        class_path=settings.chat_storage_class,
-        dsn=settings.chat_db_dsn,
-    )
-    await app_ctx.chat_repo.init_db()
-
-    # ── MCP OAuth token storage ──
-    mcp_token_store = build_mcp_token_store(
-        class_path=settings.mcp_token_store_class,
-        dsn=settings.mcp_token_store_dsn,
-    )
-    await mcp_token_store.init_db()
-    app_ctx.mcp_token_store = mcp_token_store
-    app_ctx.runtime.mcp_token_store = mcp_token_store
-
-    # ── Load YAML agent config (ADR-016) ──
-    agents_config = load_config(settings.agents_config_path)
-
-    # Pre-create vector store collections for all RAG namespaces in config
-    namespaces = [a.rag.namespace for a in agents_config.agents.values() if a.rag.enabled and a.rag.namespace]
-    if isinstance(reader, VectorStoreAdmin) and namespaces:
-        await reader.ensure_collections([*namespaces, "uploads"])
-
-    # ── Startup hook (consumer-provided) ──
-    if settings.startup_hook:
-        hook_fn = import_class(settings.startup_hook)
-        await hook_fn(reader=reader, settings=settings)
-        logger.info("[API] Startup hook executed: %s", settings.startup_hook)
-
-    app_ctx.graph = build_graph(
-        config=agents_config,
-        runtime=app_ctx.runtime,
-    )
-    logger.info(
-        "[API] Ready — model=%s, domain=%s, vector_backend=%s, agents=%s",
-        settings.litellm_model,
-        settings.auth_domain,
-        settings.vector_backend,
-        list(agents_config.agents.keys()),
-    )
+    The heavy lifting lives in ``lifecycle.setup_orchid`` / ``teardown_orchid``
+    so integrators can reuse them in their own FastAPI apps (see README).
+    """
+    await setup_orchid()
     yield
-
-    if app_ctx.mcp_token_store:
-        await app_ctx.mcp_token_store.close()
-    if app_ctx.chat_repo:
-        await app_ctx.chat_repo.close()
-    if app_ctx.http_client:
-        await app_ctx.http_client.aclose()
+    await teardown_orchid()
 
 
 # ── App factory ─────────────────────────────────────────────
@@ -142,21 +58,51 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS (allow the Next.js frontend) ─────────────────────
+# ── CORS (origins configurable via Settings.cors_allowed_origins) ──
+_cors_origins = [o.strip() for o in get_settings().cors_allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # local dev
-        "http://frontend:3000",  # Docker network
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routers ────────────────────────────────────────────────
+# ── Built-in Routers ───────────────────────────────────────
 app.include_router(chats.router)
 app.include_router(messages.router)
+app.include_router(resume.router)
 app.include_router(sharing.router)
 app.include_router(mcp_auth.router)
+app.include_router(streaming.router)
 app.include_router(legacy.router)
+
+
+# ── Plugin router discovery ────────────────────────────────
+
+
+def _load_router_plugins() -> None:
+    """Discover and register custom FastAPI routers.
+
+    Consumer packages declare custom routers in their ``pyproject.toml``::
+
+        [project.entry-points."orchid_api.routers"]
+        my_admin = "my_package.api.admin:router"
+
+    Each entry must resolve to a ``fastapi.APIRouter``.  Individual
+    failures log a warning but never block startup — see
+    :func:`orchid_ai.plugins.iter_entry_point_plugins`.
+    """
+    from fastapi import APIRouter
+
+    from orchid_ai.plugins import iter_entry_point_plugins
+
+    for name, router in iter_entry_point_plugins("orchid_api.routers", logger=logger):
+        if isinstance(router, APIRouter):
+            app.include_router(router)
+            logger.info("[API] Loaded router plugin: %s", name)
+        else:
+            logger.warning("[API] Plugin '%s' is not an APIRouter — skipping", name)
+
+
+_load_router_plugins()

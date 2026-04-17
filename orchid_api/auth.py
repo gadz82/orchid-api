@@ -45,8 +45,13 @@ async def get_auth_context(
             bearer_token=token,
         )
     except IdentityError as exc:
+        # Log the full error (internal IdP URLs, upstream status codes,
+        # etc.) but only tell the client a generic 401/403 — the
+        # original message may leak internal hostnames.
         status = exc.status_code if exc.status_code in (401, 403) else 401
-        raise HTTPException(status_code=status, detail=str(exc))
+        detail = "Forbidden" if status == 403 else "Authentication failed"
+        logger.warning("[Auth] Identity resolution failed (status=%d): %s", status, exc)
+        raise HTTPException(status_code=status, detail=detail)
 
     if auth_context.is_expired:
         raise HTTPException(status_code=401, detail="Token is expired")
