@@ -171,13 +171,16 @@ async def test_upload_no_chat_repo(auth):
 
 @pytest.mark.asyncio
 async def test_upload_chat_not_found(auth):
+    # Ownership check now lives in _helpers.verify_chat_ownership, so we patch
+    # app_ctx in both modules.
     with (
         patch("orchid_api.routers.messages.app_ctx") as ctx,
+        patch("orchid_api.routers._helpers.app_ctx") as helpers_ctx,
         patch("orchid_api.routers.messages.isinstance", return_value=True),
     ):
         ctx.runtime.get_reader.return_value = MagicMock()
-        ctx.chat_repo = AsyncMock()
-        ctx.chat_repo.get_chat = AsyncMock(return_value=None)
+        helpers_ctx.chat_repo = AsyncMock()
+        helpers_ctx.chat_repo.get_chat = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
             await upload_documents("c1", files=[], auth=auth, settings=Settings())
         assert exc.value.status_code == 404

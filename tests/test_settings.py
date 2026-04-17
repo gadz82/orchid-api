@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import yaml
 
-from orchid_api.settings import Settings, _YAML_TO_ENV, _apply_yaml_config
+from orchid_ai.config.yaml_env import YAML_TO_ENV as _YAML_TO_ENV
+
+from orchid_api.settings import Settings, _apply_yaml_config
 
 
 class TestSettings:
@@ -108,7 +110,20 @@ class TestYamlToEnvMapping:
     def test_all_sections_covered(self):
         """Verify the mapping covers expected sections."""
         sections = {k[0] for k in _YAML_TO_ENV.keys()}
-        expected = {"agents", "llm", "auth", "startup", "rag", "upload", "storage", "mcp", "mcp_auth", "api", "tracing"}
+        expected = {
+            "agents",
+            "llm",
+            "auth",
+            "startup",
+            "rag",
+            "upload",
+            "storage",
+            "mcp",
+            "mcp_auth",
+            "checkpointer",
+            "api",
+            "tracing",
+        }
         assert expected == sections
 
     def test_agents_config_path_mapped(self):
