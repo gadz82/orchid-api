@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langgraph.errors import GraphInterrupt
 
+from orchid_ai.core.mcp import MCPTokenStore
 from orchid_ai.core.state import AuthContext
+from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
-from ..context import app_ctx
+from ..context import get_chat_repo, get_graph, get_mcp_token_store_optional, get_runtime
 from ..models import ChatResponse, InterruptResponse
 from ..settings import Settings, get_settings
-from ._helpers import auto_title_if_first_message, build_interrupt_response, prepare_graph_state, verify_chat_ownership
+from ._helpers import (
+    auto_title_if_first_message,
+    build_interrupt_response,
+    prepare_graph_state,
+    verify_chat_ownership,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +36,10 @@ async def send_chat_message(
     files: list[UploadFile] = File(default=[]),
     auth: AuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    graph: Any = Depends(get_graph),
+    mcp_token_store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """
     Send a message in a chat — optionally with attached files (non-streaming).
@@ -34,12 +47,21 @@ async def send_chat_message(
     Returns ``ChatResponse`` on normal completion, or ``InterruptResponse``
     when the graph pauses for human-in-the-loop tool approval.
     """
-    prepared = await prepare_graph_state(chat_id, message, files, auth, settings)
+    prepared = await prepare_graph_state(
+        chat_id,
+        message,
+        files,
+        auth,
+        settings,
+        chat_repo=chat_repo,
+        runtime=runtime,
+        mcp_token_store=mcp_token_store,
+    )
 
     # Run the agent graph (blocking — returns full response)
     graph_config = {"configurable": {"thread_id": chat_id}}
     try:
-        result = await app_ctx.graph.ainvoke(prepared.initial_state, config=graph_config)
+        result = await graph.ainvoke(prepared.initial_state, config=graph_config)
     except GraphInterrupt as exc:
         # HITL: graph paused for tool approval — don't persist messages yet
         return build_interrupt_response(exc, chat_id, auth.tenant_key)
@@ -48,10 +70,10 @@ async def send_chat_message(
     agents_used = result.get("active_agents", [])
 
     # Persist the original user message (not augmented) + assistant response
-    await app_ctx.chat_repo.add_message(chat_id, "user", prepared.message)
-    await app_ctx.chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
+    await chat_repo.add_message(chat_id, "user", prepared.message)
+    await chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
 
-    await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows)
+    await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
 
     auth_required = [name for name, ok in prepared.mcp_auth_status.items() if not ok]
     return ChatResponse(
@@ -72,6 +94,8 @@ async def upload_documents(
     files: list[UploadFile],
     auth: AuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
+    runtime: OrchidRuntime = Depends(get_runtime),
 ):
     """Upload documents for chat-scoped RAG."""
     from orchid_ai.core.repository import VectorWriter
@@ -79,12 +103,12 @@ async def upload_documents(
     from orchid_ai.documents.pipeline import ingest_document
     from orchid_ai.rag.scopes import RAGScope
 
-    reader = app_ctx.runtime.get_reader()
+    reader = runtime.get_reader()
 
     if not isinstance(reader, VectorWriter):
         raise HTTPException(status_code=503, detail="Vector store does not support writing")
 
-    await verify_chat_ownership(chat_id, auth)
+    await verify_chat_ownership(chat_id, auth, chat_repo)
 
     scope = RAGScope(
         tenant_id=auth.tenant_key,
@@ -121,7 +145,7 @@ async def upload_documents(
             )
             results.append({"filename": file.filename, "chunks_indexed": chunks})
 
-            await app_ctx.chat_repo.add_message(
+            await chat_repo.add_message(
                 chat_id,
                 "system",
                 f"Uploaded {file.filename} ({chunks} chunks indexed)",

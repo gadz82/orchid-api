@@ -1,4 +1,8 @@
-"""Tests for orchid_api.routers.sharing — chat sharing endpoint."""
+"""Tests for orchid_api.routers.sharing — chat sharing endpoint.
+
+Handler receives ``chat_repo``/``runtime``/``agents_config`` via
+FastAPI ``Depends`` — tests pass mocks directly.
+"""
 
 from __future__ import annotations
 
@@ -18,82 +22,98 @@ def auth():
     return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
-@pytest.mark.asyncio
-async def test_share_no_chat_repo(auth):
-    """Returns 503 when chat repo is not initialised."""
-    with patch("orchid_api.routers.sharing.app_ctx") as ctx:
-        ctx.chat_repo = None
-        with pytest.raises(HTTPException) as exc:
-            await share_chat("chat-1", auth=auth, settings=Settings())
-        assert exc.value.status_code == 503
+def _runtime(reader: MagicMock | None = None) -> MagicMock:
+    rt = MagicMock()
+    rt.get_reader.return_value = reader if reader is not None else MagicMock()
+    return rt
+
+
+def _agents_config(namespaces: list[str] | None = None) -> MagicMock:
+    cfg = MagicMock()
+    agents: dict[str, MagicMock] = {}
+    for ns in namespaces or []:
+        agent = MagicMock()
+        agent.rag.enabled = True
+        agent.rag.namespace = ns
+        agents[ns] = agent
+    cfg.agents = agents
+    return cfg
 
 
 @pytest.mark.asyncio
-async def test_share_no_qdrant_backend(auth):
-    """Returns 503 when reader is not a QdrantRepository."""
-    with patch("orchid_api.routers.sharing.app_ctx") as ctx:
-        ctx.chat_repo = AsyncMock()
-        ctx.runtime.get_reader.return_value = MagicMock()  # Not a QdrantRepository
-        with pytest.raises(HTTPException) as exc:
-            await share_chat("chat-1", auth=auth, settings=Settings())
-        assert exc.value.status_code == 503
+async def test_share_unsupported_backend(auth):
+    # A plain MagicMock is NOT a VectorStoreRepository instance.
+    with pytest.raises(HTTPException) as exc:
+        await share_chat(
+            "chat-1",
+            auth=auth,
+            settings=Settings(),
+            chat_repo=AsyncMock(),
+            runtime=_runtime(reader=MagicMock()),
+            agents_config=_agents_config(),
+        )
+    assert exc.value.status_code == 501
 
 
 @pytest.mark.asyncio
 async def test_share_chat_not_found(auth):
-    """Returns 404 when chat doesn't exist."""
-    with (
-        patch("orchid_api.routers.sharing.app_ctx") as ctx,
-        patch("orchid_api.routers.sharing.isinstance", return_value=True),
-    ):
-        mock_reader = MagicMock()
-        ctx.runtime.get_reader.return_value = mock_reader
-        ctx.chat_repo = AsyncMock()
-        ctx.chat_repo.get_chat = AsyncMock(return_value=None)
+    chat_repo = AsyncMock()
+    chat_repo.get_chat = AsyncMock(return_value=None)
+    reader = MagicMock()
+    with patch("orchid_api.routers.sharing.isinstance", return_value=True):
+        reader.supports_scope_promotion = True
         with pytest.raises(HTTPException) as exc:
-            await share_chat("chat-1", auth=auth, settings=Settings())
+            await share_chat(
+                "chat-1",
+                auth=auth,
+                settings=Settings(),
+                chat_repo=chat_repo,
+                runtime=_runtime(reader=reader),
+                agents_config=_agents_config(),
+            )
         assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_share_wrong_user(auth, sample_session):
-    """Returns 404 when chat belongs to a different user."""
     sample_session.user_id = "other-user"
-    with (
-        patch("orchid_api.routers.sharing.app_ctx") as ctx,
-        patch("orchid_api.routers.sharing.isinstance", return_value=True),
-    ):
-        ctx.runtime.get_reader.return_value = MagicMock()
-        ctx.chat_repo = AsyncMock()
-        ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
+    chat_repo = AsyncMock()
+    chat_repo.get_chat = AsyncMock(return_value=sample_session)
+    reader = MagicMock()
+    reader.supports_scope_promotion = True
+    with patch("orchid_api.routers.sharing.isinstance", return_value=True):
         with pytest.raises(HTTPException) as exc:
-            await share_chat("chat-001", auth=auth, settings=Settings())
+            await share_chat(
+                "chat-001",
+                auth=auth,
+                settings=Settings(),
+                chat_repo=chat_repo,
+                runtime=_runtime(reader=reader),
+                agents_config=_agents_config(),
+            )
         assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_share_success(auth, sample_session):
-    """Successful share promotes scope and marks chat as shared."""
-    mock_reader = MagicMock()
-    mock_reader.promote_scope = AsyncMock(return_value=5)
+    reader = MagicMock()
+    reader.supports_scope_promotion = True
+    reader.promote_scope = AsyncMock(return_value=5)
 
-    mock_config = MagicMock()
-    agent_cfg = MagicMock()
-    agent_cfg.rag.enabled = True
-    agent_cfg.rag.namespace = "knowledge"
-    mock_config.agents = {"helper": agent_cfg}
+    chat_repo = AsyncMock()
+    chat_repo.get_chat = AsyncMock(return_value=sample_session)
 
-    with (
-        patch("orchid_api.routers.sharing.app_ctx") as ctx,
-        patch("orchid_api.routers.sharing.isinstance", return_value=True),
-        patch("orchid_api.routers.sharing.load_config", return_value=mock_config),
-    ):
-        ctx.runtime.get_reader.return_value = mock_reader
-        ctx.chat_repo = AsyncMock()
-        ctx.chat_repo.get_chat = AsyncMock(return_value=sample_session)
-        result = await share_chat("chat-001", auth=auth, settings=Settings())
+    with patch("orchid_api.routers.sharing.isinstance", return_value=True):
+        result = await share_chat(
+            "chat-001",
+            auth=auth,
+            settings=Settings(),
+            chat_repo=chat_repo,
+            runtime=_runtime(reader=reader),
+            agents_config=_agents_config(["knowledge"]),
+        )
 
     assert result["status"] == "shared"
     assert result["chat_id"] == "chat-001"
     assert result["points_promoted"] > 0
-    ctx.chat_repo.mark_shared.assert_called_once_with("chat-001")
+    chat_repo.mark_shared.assert_called_once_with("chat-001")

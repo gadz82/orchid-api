@@ -6,11 +6,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from orchid_ai.config.loader import load_config
+from orchid_ai.config.schema import AgentsConfig
+from orchid_ai.core.repository import VectorStoreRepository
 from orchid_ai.core.state import AuthContext
+from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
-from ..context import app_ctx
+from ..context import get_agents_config, get_chat_repo, get_runtime
 from ..settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -23,25 +26,33 @@ async def share_chat(
     chat_id: str,
     auth: AuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    agents_config: AgentsConfig = Depends(get_agents_config),
 ):
-    """Promote chat RAG data to user-common scope."""
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
+    """Promote chat RAG data to user-common scope.
 
-    # Sharing requires the Qdrant backend (uses backend-specific filter API).
+    Requires a :class:`VectorStoreRepository` whose
+    ``supports_scope_promotion`` flag is ``True`` (today only Qdrant).
+    Returns **501 Not Implemented** when the backend exists but doesn't
+    support promotion — the route is present, the action is not.
+    """
+    reader = runtime.get_reader()
+    if not isinstance(reader, VectorStoreRepository) or not reader.supports_scope_promotion:
+        raise HTTPException(
+            status_code=501,
+            detail="Sharing is not supported by the configured vector backend.",
+        )
+
+    # Backend-specific filter API — lazy-imported to keep qdrant-client an
+    # optional dep of the API package.  The capability check above ensures
+    # Qdrant is the active backend when we reach this point.
     try:
         from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
-
-        from orchid_ai.rag.backends.qdrant import QdrantRepository
     except ImportError:
-        raise HTTPException(status_code=503, detail="Sharing requires Qdrant backend")
+        raise HTTPException(status_code=503, detail="Sharing requires qdrant-client to be installed")
 
-    reader = app_ctx.runtime.get_reader()
-
-    if not isinstance(reader, QdrantRepository):
-        raise HTTPException(status_code=503, detail="Sharing requires Qdrant backend")
-
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
+    chat = await chat_repo.get_chat(chat_id)
     if not chat or chat.user_id != auth.user_id:
         raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -54,7 +65,6 @@ async def share_chat(
     )
 
     # Promote across all RAG namespaces from agent config + uploads
-    agents_config = load_config(settings.agents_config_path)
     rag_namespaces = [a.rag.namespace for a in agents_config.agents.values() if a.rag.enabled and a.rag.namespace]
     all_namespaces = list({settings.upload_namespace, *rag_namespaces})
 
@@ -76,7 +86,7 @@ async def share_chat(
         except Exception as exc:
             logger.warning("[Share] Failed for namespace '%s': %s", namespace, exc)
 
-    await app_ctx.chat_repo.mark_shared(chat_id)
+    await chat_repo.mark_shared(chat_id)
 
     logger.info("[API] /chats/%s/share promoted %d points", chat_id[:8], total_promoted)
     return {"status": "shared", "chat_id": chat_id, "points_promoted": total_promoted}

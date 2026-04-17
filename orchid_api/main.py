@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .lifecycle import setup_orchid, teardown_orchid
 from .routers import chats, legacy, messages, mcp_auth, resume, sharing, streaming
+from .settings import get_settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,13 +58,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS (allow the Next.js frontend) ─────────────────────
+# ── CORS (origins configurable via Settings.cors_allowed_origins) ──
+_cors_origins = [o.strip() for o in get_settings().cors_allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # local dev
-        "http://frontend:3000",  # Docker network
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,38 +82,27 @@ app.include_router(legacy.router)
 
 
 def _load_router_plugins() -> None:
-    """Discover and register custom FastAPI routers from entry-point group.
+    """Discover and register custom FastAPI routers.
 
-    Consumer packages can declare custom routers in their ``pyproject.toml``::
+    Consumer packages declare custom routers in their ``pyproject.toml``::
 
         [project.entry-points."orchid_api.routers"]
         my_admin = "my_package.api.admin:router"
 
-    Each entry must resolve to a ``fastapi.APIRouter`` instance.
-    Failed plugins log a warning but do not block startup.
+    Each entry must resolve to a ``fastapi.APIRouter``.  Individual
+    failures log a warning but never block startup — see
+    :func:`orchid_ai.plugins.iter_entry_point_plugins`.
     """
     from fastapi import APIRouter
 
-    try:
-        from importlib.metadata import entry_points
+    from orchid_ai.plugins import iter_entry_point_plugins
 
-        eps = entry_points()
-        plugins = (
-            eps.select(group="orchid_api.routers") if hasattr(eps, "select") else eps.get("orchid_api.routers", [])
-        )
-
-        for ep in plugins:
-            try:
-                router = ep.load()
-                if isinstance(router, APIRouter):
-                    app.include_router(router)
-                    logger.info("[API] Loaded router plugin: %s", ep.name)
-                else:
-                    logger.warning("[API] Plugin '%s' is not an APIRouter — skipping", ep.name)
-            except Exception as exc:
-                logger.warning("[API] Failed to load router plugin '%s': %s", ep.name, exc)
-    except Exception:
-        pass  # importlib.metadata unavailable or no plugins — that's fine
+    for name, router in iter_entry_point_plugins("orchid_api.routers", logger=logger):
+        if isinstance(router, APIRouter):
+            app.include_router(router)
+            logger.info("[API] Loaded router plugin: %s", name)
+        else:
+            logger.warning("[API] Plugin '%s' is not an APIRouter — skipping", name)
 
 
 _load_router_plugins()
