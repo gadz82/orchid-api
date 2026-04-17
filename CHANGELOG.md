@@ -2,6 +2,76 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-04-17)
+
+### Bug Fixes
+
+- Buffer agent results for done event, improve handoff detection
+  ([`a0016a1`](https://github.com/gadz82/orchid-api/commit/a0016a11171b74e157b82a8c82db1cd4e0408cc7))
+
+- Deduplicate handoff messages and strip LLM preamble
+  ([`bef441b`](https://github.com/gadz82/orchid-api/commit/bef441b2f24d582f6ebbd8c3fb34ab2e1e090089))
+
+- Emit handoff messages as separate SSE event type
+  ([`0e5953d`](https://github.com/gadz82/orchid-api/commit/0e5953d80b8305a7031ef2466fa5dbcb90395012))
+
+- Filter streaming to only emit synthesis tokens, deduplicate
+  ([`588ec16`](https://github.com/gadz82/orchid-api/commit/588ec163fd6ca48d170f7add215e3c8a719c51bf))
+
+- Prevent handoff text from leaking into response bubble
+  ([`03795a6`](https://github.com/gadz82/orchid-api/commit/03795a6ed3affe336103487fdedc1d30ccfd3050))
+
+### Continuous Integration
+
+- Grant pull-requests: write permission to the test job
+  ([`a819a3d`](https://github.com/gadz82/orchid-api/commit/a819a3dbda5d65106cf8496807c0b6996827da0e))
+
+### Features
+
+- Add human-in-the-loop (HITL) tool approval workflow
+  ([`8511260`](https://github.com/gadz82/orchid-api/commit/85112608706e60ff46baf8ff93865b88470934ad))
+
+- Add LangGraph checkpointer integration for state persistence
+  ([`404c547`](https://github.com/gadz82/orchid-api/commit/404c547ff89d1c72178f5c7d0e86981429742295))
+
+- Add resume endpoint to support HITL tool approval
+  ([`5823cbf`](https://github.com/gadz82/orchid-api/commit/5823cbfd61f3fb74b28479a36306e6da3d71ace6))
+
+- Add SSE streaming endpoint for real-time responses
+  ([`5ec8141`](https://github.com/gadz82/orchid-api/commit/5ec8141ded29110eaf28217882449294426a2fdd))
+
+- Emit agent done status with preview (parallel + sequential)
+  ([`70fdbb7`](https://github.com/gadz82/orchid-api/commit/70fdbb794842a5e6c3d297ec1b31ed9e38138bc7))
+
+- Emit agent_result events with agent response content
+  ([`98a5536`](https://github.com/gadz82/orchid-api/commit/98a5536e8ccb2f0b8237c4cb93749ad2395c78eb))
+
+- Optimise message handling with checkpointer-aware invocation
+  ([`7851e71`](https://github.com/gadz82/orchid-api/commit/7851e71f47cb045e1fadce5dce378909c89ce3d8))
+
+- Upgrade orchid-ai dependency to >=1.3.0
+  ([`c20ba54`](https://github.com/gadz82/orchid-api/commit/c20ba54e6981febe02ba364c7387f815d9fd1c28))
+
+- **api**: Refactor lifecycle for modular integration
+  ([`5a7baef`](https://github.com/gadz82/orchid-api/commit/5a7baef818a71f495d8ffd015ebc7c448a204bde))
+
+- **api**: Refactor sharing tests + MCP auth dependency injection
+  ([`3a07c6f`](https://github.com/gadz82/orchid-api/commit/3a07c6fe053e2f2daeda6cb3725de2215c48ba23))
+
+- **streaming**: Buffer supervisor tokens for handoff classification
+  ([`c7373e3`](https://github.com/gadz82/orchid-api/commit/c7373e31af7b03da7feb729d6812f3f7f65b61a1))
+
+### Refactoring
+
+- Centralize helpers and streamline PKCE OAuth flow
+  ([`6c6ccfe`](https://github.com/gadz82/orchid-api/commit/6c6ccfe82d3d2c36dbdb6e8eae7c0dfdfbdb0493))
+
+### Testing
+
+- Add HITL tool approval tests
+  ([`5823cbf`](https://github.com/gadz82/orchid-api/commit/5823cbfd61f3fb74b28479a36306e6da3d71ace6))
+
+
 ## v1.0.11 (2026-04-15)
 
 ### Bug Fixes
