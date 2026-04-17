@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from orchid_ai.persistence.models import ChatMessage, ChatSession
 
 from orchid_api.models import (
     ChatRequest,
@@ -12,7 +9,6 @@ from orchid_api.models import (
     ChatSessionOut,
     CreateChatRequest,
     IndexRequest,
-    IndexResponse,
     MessageOut,
     SendMessageRequest,
     message_to_out,
