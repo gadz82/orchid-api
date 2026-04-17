@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from langgraph.errors import GraphInterrupt
@@ -10,9 +11,11 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from orchid_ai.core.state import AuthContext
+from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
-from ..context import app_ctx
+from ..context import get_chat_repo, get_graph, get_runtime
 from ..models import ChatResponse, InterruptResponse
 from ._helpers import build_interrupt_response, verify_chat_ownership
 
@@ -32,6 +35,9 @@ async def resume_chat(
     chat_id: str,
     body: ResumeRequest,
     auth: AuthContext = Depends(get_auth_context),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    graph: Any = Depends(get_graph),
 ):
     """Resume a paused graph after human-in-the-loop approval.
 
@@ -40,12 +46,9 @@ async def resume_chat(
     The graph resumes from the checkpoint and either executes or skips
     the pending tool call.
     """
-    if app_ctx.graph is None:
-        raise HTTPException(status_code=503, detail="Graph not initialised")
+    await verify_chat_ownership(chat_id, auth, chat_repo)
 
-    await verify_chat_ownership(chat_id, auth)
-
-    if app_ctx.runtime.checkpointer is None:
+    if runtime.checkpointer is None:
         raise HTTPException(
             status_code=400,
             detail="Cannot resume: no checkpointer configured. Enable checkpointing to use tool approval.",
@@ -54,7 +57,7 @@ async def resume_chat(
     graph_config = {"configurable": {"thread_id": chat_id}}
 
     try:
-        result = await app_ctx.graph.ainvoke(
+        result = await graph.ainvoke(
             Command(resume={"approved": body.approved}),
             config=graph_config,
         )
@@ -64,7 +67,7 @@ async def resume_chat(
     response_text = result.get("final_response", "No response generated.")
     agents_used = result.get("active_agents", [])
 
-    await app_ctx.chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
+    await chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
 
     return ChatResponse(
         response=response_text,

@@ -48,10 +48,12 @@ class Settings(BaseSettings):
     auth_domain: str = ""  # default domain for identity resolution
 
     # ── LLM ───────────────────────────────────────────────────
+    # Provider API keys (GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
+    # OPENAI_API_KEY, …) are read directly by LiteLLM / the LangChain
+    # chat-model integrations from the environment — there is no need
+    # to re-declare them here.  Setting them via docker-compose or a
+    # ``.env`` file is sufficient.
     litellm_model: str = "ollama/llama3.2"
-    groq_api_key: str = ""
-    gemini_api_key: str = ""
-    anthropic_api_key: str = ""
 
     # ── Agent config (ADR-016) ──────────────────────────────────
     agents_config_path: str = "agents.yaml"
@@ -62,7 +64,6 @@ class Settings(BaseSettings):
 
     # ── Embeddings ──────────────────────────────────────────
     embedding_model: str = "text-embedding-3-small"
-    openai_api_key: str = ""
 
     # ── Chat persistence ───────────────────────────────────
     chat_storage_class: str = "orchid_ai.persistence.sqlite.SQLiteChatStorage"
@@ -81,6 +82,13 @@ class Settings(BaseSettings):
     # ── Startup hook ─────────────────────────────────────────
     startup_hook: str = ""
 
+    # ── Admin endpoints ──────────────────────────────────────
+    # The legacy ``POST /index`` endpoint can trigger a full reindex —
+    # disabled by default so a plain authenticated user cannot DOS the
+    # vector store.  Flip to ``true`` (via env or orchid.yml) for dev /
+    # ops workflows.
+    allow_index_endpoint: bool = False
+
     # ── MCP ───────────────────────────────────────────────────
     mcp_catalog_url: str = ""
     mcp_notifications_url: str = ""
@@ -89,12 +97,26 @@ class Settings(BaseSettings):
     mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
 
+    # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
+    # Built-in types: "memory" (default, single-instance).  Swap for a
+    # dotted class path or registered type (e.g. "redis") for multi-worker
+    # deployments so state survives across replicas.
+    oauth_state_store_class: str = "memory"
+    oauth_state_store_dsn: str = ""
+    oauth_state_ttl_seconds: int = 600
+
     # ── Checkpointer (LangGraph state persistence) ────────────
     checkpointer_type: str = ""  # "memory", "sqlite", "postgres", or dotted class path; empty = disabled
     checkpointer_dsn: str = ""  # connection string or file path
 
     # ── API base URL (for OAuth callback construction) ───────
     api_base_url: str = "http://localhost:8000"
+
+    # ── CORS ───────────────────────────────────────────────────
+    # Comma-separated list of allowed browser origins.  Default keeps
+    # backward compat with the demo setups (orchid-frontend at :3000
+    # on localhost and inside the Docker ``frontend`` service).
+    cors_allowed_origins: str = "http://localhost:3000,http://frontend:3000"
 
     # ── Tracing ───────────────────────────────────────────────
     langsmith_api_key: str = ""

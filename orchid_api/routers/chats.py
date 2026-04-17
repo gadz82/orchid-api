@@ -7,9 +7,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from orchid_ai.core.state import AuthContext
+from orchid_ai.persistence.base import ChatStorage
 
 from ..auth import get_auth_context
-from ..context import app_ctx
+from ..context import get_chat_repo
 from ..models import ChatSessionOut, CreateChatRequest, MessageOut, message_to_out, session_to_out
 
 logger = logging.getLogger(__name__)
@@ -21,12 +22,10 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 async def create_chat(
     request: CreateChatRequest,
     auth: AuthContext = Depends(get_auth_context),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
 ):
     """Create a new chat session."""
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
-
-    session = await app_ctx.chat_repo.create_chat(
+    session = await chat_repo.create_chat(
         tenant_id=auth.tenant_key,
         user_id=auth.user_id,
         title=request.title or "New chat",
@@ -37,12 +36,10 @@ async def create_chat(
 @router.get("", response_model=list[ChatSessionOut])
 async def list_chats(
     auth: AuthContext = Depends(get_auth_context),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
 ):
     """List all chat sessions for the current user."""
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
-
-    sessions = await app_ctx.chat_repo.list_chats(
+    sessions = await chat_repo.list_chats(
         tenant_id=auth.tenant_key,
         user_id=auth.user_id,
     )
@@ -55,16 +52,14 @@ async def get_messages(
     limit: int = 50,
     offset: int = 0,
     auth: AuthContext = Depends(get_auth_context),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
 ):
     """Load message history for a chat."""
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
-
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
+    chat = await chat_repo.get_chat(chat_id)
     if not chat or chat.user_id != auth.user_id:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    messages = await app_ctx.chat_repo.get_messages(chat_id, limit=limit, offset=offset)
+    messages = await chat_repo.get_messages(chat_id, limit=limit, offset=offset)
     return [message_to_out(m) for m in messages]
 
 
@@ -72,14 +67,12 @@ async def get_messages(
 async def delete_chat(
     chat_id: str,
     auth: AuthContext = Depends(get_auth_context),
+    chat_repo: ChatStorage = Depends(get_chat_repo),
 ):
     """Delete a chat session and all its messages."""
-    if app_ctx.chat_repo is None:
-        raise HTTPException(status_code=503, detail="Chat repository not initialised")
-
-    chat = await app_ctx.chat_repo.get_chat(chat_id)
+    chat = await chat_repo.get_chat(chat_id)
     if not chat or chat.user_id != auth.user_id:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    await app_ctx.chat_repo.delete_chat(chat_id)
+    await chat_repo.delete_chat(chat_id)
     return {"status": "deleted", "chat_id": chat_id}
