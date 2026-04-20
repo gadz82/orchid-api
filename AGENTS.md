@@ -65,6 +65,7 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 | `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
+| `CHAT_EXTRA_MIGRATIONS_PACKAGE` | `""` | Dotted import path of integrator migrations applied after the framework's (see `orchid_ai/persistence/AGENTS.md`) |
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
 | `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to IdentityResolver |
 | `STARTUP_HOOK` | `""` | Async function called at startup |

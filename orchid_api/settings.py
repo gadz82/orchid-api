@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     chat_storage_class: str = "orchid_ai.persistence.sqlite.SQLiteChatStorage"
     chat_db_dsn: str = "~/.orchid/chats.db"
 
+    # Dotted import path of an integrator-supplied migrations package.
+    # Applied after the framework migrations by both the chat storage and
+    # the MCP token store (they share the DB).  Empty string disables it.
+    chat_extra_migrations_package: str = ""
+
     # ── Document upload ───────────────────────────────────────
     vision_model: str = ""
     upload_namespace: str = "uploads"
