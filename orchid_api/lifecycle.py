@@ -112,6 +112,7 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         embedding_model=s.embedding_model,
         chat_storage_class=s.chat_storage_class,
         chat_db_dsn=s.chat_db_dsn,
+        chat_extra_migrations_package=s.chat_extra_migrations_package or None,
         mcp_token_store_class=s.mcp_token_store_class,
         mcp_token_store_dsn=s.mcp_token_store_dsn,
         checkpointer_type=s.checkpointer_type,
