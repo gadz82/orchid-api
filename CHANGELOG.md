@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-04-21)
+
+### Bug Fixes
+
+- Bump orchid-ai dependency to >=1.3.2 in CLI and API
+  ([`2944dcf`](https://github.com/gadz82/orchid-api/commit/2944dcf22224ebb6a286f81faa242477acfea585))
+
+### Features
+
+- **api**: Add support for integrator-supplied migration packages
+  ([`500a899`](https://github.com/gadz82/orchid-api/commit/500a899d1fdbff0f1d37575e71d36f81743594bb))
+
+
 ## v1.1.1 (2026-04-17)
 
 ### Bug Fixes
