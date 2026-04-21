@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage
 
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -25,7 +25,7 @@ router = APIRouter(tags=["legacy"])
 @router.post("/chat", response_model=ChatResponse, deprecated=True)
 async def chat_legacy(
     request: ChatRequest,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     graph: Any = Depends(get_graph),
 ):
     """
@@ -66,7 +66,7 @@ async def chat_legacy(
 @router.post("/index", response_model=IndexResponse)
 async def index_data(
     request: IndexRequest,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
     runtime: OrchidRuntime = Depends(get_runtime),
 ):
@@ -83,11 +83,11 @@ async def index_data(
             detail="The /index endpoint is disabled. Set ALLOW_INDEX_ENDPOINT=true to enable.",
         )
 
-    from orchid_ai.core.repository import VectorWriter
+    from orchid_ai.core.repository import OrchidVectorWriter
 
     reader = runtime.get_reader()
 
-    if not isinstance(reader, VectorWriter):
+    if not isinstance(reader, OrchidVectorWriter):
         raise HTTPException(
             status_code=503,
             detail="Vector store does not support writing (backend may be 'null')",

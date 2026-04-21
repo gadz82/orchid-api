@@ -1,66 +1,74 @@
-"""Application context — replaces module-level singletons (DIP)."""
+"""Application context — single owned :class:`Orchid` + adapter-level concerns."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
 
-from orchid_ai.bootstrap import BootstrapResult, teardown_runtime
-from orchid_ai.config.schema import AgentsConfig
-from orchid_ai.core.identity import IdentityResolver
-from orchid_ai.core.mcp import MCPTokenStore
-from orchid_ai.mcp.oauth_state import OAuthStateStore
-from orchid_ai.persistence.base import ChatStorage
-from orchid_ai.runtime import OrchidRuntime
+from orchid_ai import Orchid, OrchidRuntime
+from orchid_ai.config.schema import OrchidAgentsConfig
+from orchid_ai.core.identity import OrchidIdentityResolver
+from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.mcp.oauth_state import OrchidOAuthStateStore
+from orchid_ai.persistence.base import OrchidChatStorage
 
 
 @dataclass
 class AppContext:
-    """Holds runtime dependencies, created once at startup.
+    """Adapter-level runtime state for ``orchid-api``.
 
-    The ``runtime`` field is the Orchid framework dependency bag — it owns the
-    reader, LLM service, and MCP client factory.  API-layer concerns
-    (http_client, identity_resolver, chat_repo, mcp_token_store, graph,
-    oauth_state_store, agents_config) stay here.
+    Holds a **single** :class:`Orchid` instance that owns the framework
+    runtime + graph + persistence + checkpointer, plus orchid-api's own
+    HTTP-layer concerns (identity resolver, shared HTTP client, OAuth
+    state store).  Legacy fields (``runtime``, ``chat_repo``, ``graph``,
+    ``mcp_token_store``, ``agents_config``) are exposed as read-through
+    properties so routers that depend on them keep working unchanged.
     """
 
-    runtime: OrchidRuntime = field(default_factory=OrchidRuntime)
-    graph: Any = None
+    orchid: Orchid | None = None
     http_client: httpx.AsyncClient | None = None
-    identity_resolver: IdentityResolver | None = None
-    chat_repo: ChatStorage | None = None
-    mcp_token_store: MCPTokenStore | None = None
-    oauth_state_store: OAuthStateStore | None = None
-    agents_config: AgentsConfig | None = None
-    # Private handle on the library-level ``BootstrapResult`` used by
-    # :meth:`release_resources`.  Callers should not read this directly —
-    # pair every ``setup_orchid`` with one ``release_resources`` invocation.
-    _bootstrap: BootstrapResult | None = None
+    identity_resolver: OrchidIdentityResolver | None = None
+    oauth_state_store: OrchidOAuthStateStore | None = None
+
+    # ── Read-through properties (convenience for existing routers) ──
+
+    @property
+    def runtime(self) -> OrchidRuntime:
+        """Underlying :class:`OrchidRuntime`, or an empty default when not started."""
+        return self.orchid.runtime if self.orchid is not None else OrchidRuntime()
+
+    @property
+    def graph(self) -> Any:
+        return self.orchid.graph if self.orchid is not None else None
+
+    @property
+    def chat_repo(self) -> OrchidChatStorage | None:
+        return self.orchid.chat_repo if self.orchid is not None else None
+
+    @property
+    def mcp_token_store(self) -> OrchidMCPTokenStore | None:
+        return self.orchid.mcp_token_store if self.orchid is not None else None
+
+    @property
+    def agents_config(self) -> OrchidAgentsConfig | None:
+        return self.orchid.config if self.orchid is not None else None
 
     async def release_resources(self) -> None:
         """Release every library-level resource this context holds.
 
-        Tears down the ``BootstrapResult`` (checkpointer, MCP token
-        store, chat storage), closes the OAuth state store, and clears
-        all downstream field references.  Safe to call twice — every
-        step short-circuits when its resource is already ``None``.
-
-        Encapsulates the release behaviour so :func:`lifecycle.teardown_orchid`
-        doesn't have to reach into the private ``_bootstrap`` field.
+        Safe to call twice — each step short-circuits when its resource
+        is already ``None``.
         """
-        if self._bootstrap is not None:
-            await teardown_runtime(self._bootstrap)
-            self._bootstrap = None
+        if self.orchid is not None:
+            await self.orchid.close()
+            self.orchid = None
 
         if self.oauth_state_store is not None:
             await self.oauth_state_store.close()
             self.oauth_state_store = None
-
-        self.mcp_token_store = None
-        self.chat_repo = None
 
 
 # Singleton instance — populated by lifespan()
@@ -75,7 +83,7 @@ app_ctx = AppContext()
 # up yet (e.g. someone calls an endpoint before ``setup_orchid``).
 
 
-def get_chat_repo() -> ChatStorage:
+def get_chat_repo() -> OrchidChatStorage:
     """FastAPI dependency — returns the chat storage or raises 503."""
     if app_ctx.chat_repo is None:
         raise HTTPException(status_code=503, detail="Chat repository not initialised")
@@ -90,29 +98,30 @@ def get_graph() -> Any:
 
 
 def get_runtime() -> OrchidRuntime:
-    """FastAPI dependency — returns the ``OrchidRuntime``.
+    """FastAPI dependency — returns the :class:`OrchidRuntime`.
 
-    ``AppContext.runtime`` has a ``default_factory`` and is always
-    populated at import time, so no null-check is necessary.
+    Always returns a non-null value: when :class:`Orchid` hasn't been
+    started yet, ``AppContext.runtime`` falls back to a default
+    :class:`OrchidRuntime()` via the property.
     """
     return app_ctx.runtime
 
 
-def get_agents_config() -> AgentsConfig:
+def get_agents_config() -> OrchidAgentsConfig:
     """FastAPI dependency — returns the parsed agents config or raises 503."""
     if app_ctx.agents_config is None:
         raise HTTPException(status_code=503, detail="Agents config not loaded")
     return app_ctx.agents_config
 
 
-def get_oauth_state_store() -> OAuthStateStore:
+def get_oauth_state_store() -> OrchidOAuthStateStore:
     """FastAPI dependency — returns the OAuth state store or raises 503."""
     if app_ctx.oauth_state_store is None:
         raise HTTPException(status_code=503, detail="OAuth state store not initialised")
     return app_ctx.oauth_state_store
 
 
-def get_mcp_token_store() -> MCPTokenStore:
+def get_mcp_token_store() -> OrchidMCPTokenStore:
     """FastAPI dependency — returns the MCP OAuth token store or raises 503."""
     if app_ctx.mcp_token_store is None:
         raise HTTPException(status_code=503, detail="MCP token store not initialised")
@@ -128,12 +137,12 @@ def get_mcp_token_store() -> MCPTokenStore:
 # degradation explicit at the call site.
 
 
-def get_mcp_token_store_optional() -> MCPTokenStore | None:
+def get_mcp_token_store_optional() -> OrchidMCPTokenStore | None:
     """FastAPI dependency — return the MCP token store or ``None``."""
     return app_ctx.mcp_token_store
 
 
-def get_agents_config_optional() -> AgentsConfig | None:
+def get_agents_config_optional() -> OrchidAgentsConfig | None:
     """FastAPI dependency — return the parsed agents config or ``None``.
 
     Used by endpoints that advertise static capabilities before the

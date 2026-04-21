@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.mcp import MCPTokenRecord
-from orchid_ai.core.state import AuthContext
-from orchid_ai.mcp.auth_registry import MCPAuthRegistry, MCPOAuthServerInfo
-from orchid_ai.mcp.oauth_state import InMemoryOAuthStateStore
+from orchid_ai.core.mcp import OrchidMCPTokenRecord
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.mcp.auth_registry import OrchidMCPAuthRegistry, OrchidMCPOAuthServerInfo
+from orchid_ai.mcp.oauth_state import OrchidInMemoryOAuthStateStore
 
 from orchid_api.routers.mcp_auth import (
     get_authorize_url,
@@ -29,7 +29,7 @@ from orchid_api.routers.mcp_auth import (
 
 @pytest.fixture
 def auth():
-    return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
 @pytest.fixture
@@ -43,9 +43,9 @@ def mock_store():
 
 @pytest.fixture
 def registry():
-    return MCPAuthRegistry(
+    return OrchidMCPAuthRegistry(
         _servers={
-            "ext-crm": MCPOAuthServerInfo(
+            "ext-crm": OrchidMCPOAuthServerInfo(
                 server_name="ext-crm",
                 client_id="orchid-crm",
                 authorization_endpoint="https://auth.crm.example.com/authorize",
@@ -65,7 +65,7 @@ def settings():
     return s
 
 
-def _runtime(registry: MCPAuthRegistry | None) -> MagicMock:
+def _runtime(registry: OrchidMCPAuthRegistry | None) -> MagicMock:
     rt = MagicMock()
     rt.mcp_auth_registry = registry
     return rt
@@ -90,7 +90,7 @@ async def test_list_servers_unauthorized(auth, mock_store, registry):
 
 @pytest.mark.asyncio
 async def test_list_servers_authorized(auth, mock_store, registry):
-    mock_store.get_token.return_value = MCPTokenRecord(
+    mock_store.get_token.return_value = OrchidMCPTokenRecord(
         server_name="ext-crm",
         tenant_id="t1",
         user_id="u1",
@@ -109,7 +109,7 @@ async def test_list_servers_authorized(auth, mock_store, registry):
 async def test_list_servers_empty_registry(auth):
     result = await list_mcp_auth_servers(
         auth=auth,
-        runtime=_runtime(MCPAuthRegistry()),
+        runtime=_runtime(OrchidMCPAuthRegistry()),
         store=None,
     )
     assert result == []
@@ -135,7 +135,7 @@ async def test_authorize_returns_url(auth, registry, settings):
         auth=auth,
         settings=settings,
         runtime=_runtime(registry),
-        state_store=InMemoryOAuthStateStore(),
+        state_store=OrchidInMemoryOAuthStateStore(),
     )
     assert "authorize_url" in result
     assert "state" in result
@@ -152,7 +152,7 @@ async def test_authorize_unknown_server(auth, registry, settings):
             auth=auth,
             settings=settings,
             runtime=_runtime(registry),
-            state_store=InMemoryOAuthStateStore(),
+            state_store=OrchidInMemoryOAuthStateStore(),
         )
     assert exc_info.value.status_code == 404
 
@@ -165,7 +165,7 @@ async def test_authorize_no_registry(auth, settings):
             auth=auth,
             settings=settings,
             runtime=_runtime(None),
-            state_store=InMemoryOAuthStateStore(),
+            state_store=OrchidInMemoryOAuthStateStore(),
         )
     assert exc_info.value.status_code == 404
 
@@ -180,7 +180,7 @@ async def test_callback_invalid_state(settings):
         state="invalid-state",
         settings=settings,
         runtime=_runtime(None),
-        state_store=InMemoryOAuthStateStore(),
+        state_store=OrchidInMemoryOAuthStateStore(),
         token_store=None,
     )
     assert result.status_code == 400
@@ -193,7 +193,7 @@ async def test_callback_missing_code(settings):
         state="something",
         settings=settings,
         runtime=_runtime(None),
-        state_store=InMemoryOAuthStateStore(),
+        state_store=OrchidInMemoryOAuthStateStore(),
         token_store=None,
     )
     assert result.status_code == 400
@@ -205,7 +205,7 @@ async def test_callback_error_param(settings):
         error="access_denied",
         settings=settings,
         runtime=_runtime(None),
-        state_store=InMemoryOAuthStateStore(),
+        state_store=OrchidInMemoryOAuthStateStore(),
         token_store=None,
     )
     assert result.status_code == 400

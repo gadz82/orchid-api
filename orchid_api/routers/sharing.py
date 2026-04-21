@@ -6,10 +6,10 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from orchid_ai.config.schema import AgentsConfig
-from orchid_ai.core.repository import VectorStoreRepository
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.config.schema import OrchidAgentsConfig
+from orchid_ai.core.repository import OrchidVectorStoreRepository
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -24,21 +24,21 @@ router = APIRouter(prefix="/chats", tags=["sharing"])
 @router.post("/{chat_id}/share")
 async def share_chat(
     chat_id: str,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
-    agents_config: AgentsConfig = Depends(get_agents_config),
+    agents_config: OrchidAgentsConfig = Depends(get_agents_config),
 ):
     """Promote chat RAG data to user-common scope.
 
-    Requires a :class:`VectorStoreRepository` whose
+    Requires a :class:`OrchidVectorStoreRepository` whose
     ``supports_scope_promotion`` flag is ``True`` (today only Qdrant).
     Returns **501 Not Implemented** when the backend exists but doesn't
     support promotion — the route is present, the action is not.
     """
     reader = runtime.get_reader()
-    if not isinstance(reader, VectorStoreRepository) or not reader.supports_scope_promotion:
+    if not isinstance(reader, OrchidVectorStoreRepository) or not reader.supports_scope_promotion:
         raise HTTPException(
             status_code=501,
             detail="Sharing is not supported by the configured vector backend.",

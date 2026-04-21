@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 
 from orchid_api.routers.sharing import share_chat
 from orchid_api.settings import Settings
@@ -19,7 +19,7 @@ from orchid_api.settings import Settings
 
 @pytest.fixture
 def auth():
-    return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
 def _runtime(reader: MagicMock | None = None) -> MagicMock:
@@ -42,7 +42,7 @@ def _agents_config(namespaces: list[str] | None = None) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_share_unsupported_backend(auth):
-    # A plain MagicMock is NOT a VectorStoreRepository instance.
+    # A plain MagicMock is NOT a OrchidVectorStoreRepository instance.
     with pytest.raises(HTTPException) as exc:
         await share_chat(
             "chat-1",

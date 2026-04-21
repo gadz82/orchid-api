@@ -6,8 +6,8 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.base import OrchidChatStorage
 
 from ..auth import get_auth_context
 from ..context import get_chat_repo
@@ -21,8 +21,8 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 @router.post("", response_model=ChatSessionOut)
 async def create_chat(
     request: CreateChatRequest,
-    auth: AuthContext = Depends(get_auth_context),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """Create a new chat session."""
     session = await chat_repo.create_chat(
@@ -35,8 +35,8 @@ async def create_chat(
 
 @router.get("", response_model=list[ChatSessionOut])
 async def list_chats(
-    auth: AuthContext = Depends(get_auth_context),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """List all chat sessions for the current user."""
     sessions = await chat_repo.list_chats(
@@ -51,8 +51,8 @@ async def get_messages(
     chat_id: str,
     limit: int = 50,
     offset: int = 0,
-    auth: AuthContext = Depends(get_auth_context),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """Load message history for a chat."""
     chat = await chat_repo.get_chat(chat_id)
@@ -66,8 +66,8 @@ async def get_messages(
 @router.delete("/{chat_id}")
 async def delete_chat(
     chat_id: str,
-    auth: AuthContext = Depends(get_auth_context),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """Delete a chat session and all its messages."""
     chat = await chat_repo.get_chat(chat_id)

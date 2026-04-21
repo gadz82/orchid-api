@@ -10,8 +10,8 @@ from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -34,8 +34,8 @@ class ResumeRequest(BaseModel):
 async def resume_chat(
     chat_id: str,
     body: ResumeRequest,
-    auth: AuthContext = Depends(get_auth_context),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
     graph: Any = Depends(get_graph),
 ):

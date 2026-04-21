@@ -14,7 +14,7 @@ Provides HTTP endpoints for chat management, message handling, document uploads,
 - Streaming message send with agent graph invocation
 - File upload with document parsing and chat-scoped RAG
 - Chat sharing (promote RAG data to user scope)
-- Pluggable identity resolution (Bearer token -> AuthContext)
+- Pluggable identity resolution (Bearer token -> OrchidAuthContext)
 - LangSmith tracing integration
 - CORS support for frontend clients
 
@@ -65,7 +65,7 @@ orchid_api/
   main.py          FastAPI app + lifespan + router plugin discovery
   settings.py      Pydantic BaseSettings + YAML overlay (shared with CLI)
   context.py       AppContext dataclass (singleton, populated at startup)
-  auth.py          Bearer token -> AuthContext via pluggable IdentityResolver
+  auth.py          Bearer token -> OrchidAuthContext via pluggable OrchidIdentityResolver
   models.py        Pydantic request/response models (incl. InterruptResponse)
   tracing.py       LangSmith setup
   routers/
@@ -185,12 +185,12 @@ from fastapi import APIRouter, Depends
 from orchid_api.auth import get_auth_context
 from orchid_api.context import app_ctx
 from orchid_api.settings import get_settings
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/stats")
-async def stats(auth: AuthContext = Depends(get_auth_context)):
+async def stats(auth: OrchidAuthContext = Depends(get_auth_context)):
     chat_repo = app_ctx.chat_repo
     reader = app_ctx.runtime.get_reader()
     graph = app_ctx.graph
@@ -212,14 +212,14 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `VECTOR_BACKEND` | `qdrant` | Vector store backend (`qdrant` or `null`) |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
+| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage` | Storage backend class |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
-| `IDENTITY_RESOLVER_CLASS` | -- | Dotted path to IdentityResolver subclass |
+| `IDENTITY_RESOLVER_CLASS` | -- | Dotted path to OrchidIdentityResolver subclass |
 | `STARTUP_HOOK` | -- | Async function called at startup |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | -- | LangSmith API key |
-| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore` | MCP OAuth token store backend |
+| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore` | MCP OAuth token store backend |
 | `MCP_TOKEN_STORE_DSN` | `~/.orchid/mcp_tokens.db` | Token store connection string |
 | `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
 

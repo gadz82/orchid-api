@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 
 from orchid_api.routers.messages import send_chat_message, upload_documents
 from orchid_api.settings import Settings
@@ -20,7 +20,7 @@ from orchid_api.settings import Settings
 
 @pytest.fixture
 def auth():
-    return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
 def _runtime(reader=None) -> MagicMock:
@@ -178,14 +178,14 @@ async def test_upload_no_writer(auth):
             auth=auth,
             settings=Settings(),
             chat_repo=AsyncMock(),
-            runtime=_runtime(reader=object()),  # not a VectorWriter
+            runtime=_runtime(reader=object()),  # not a OrchidVectorWriter
         )
     assert exc.value.status_code == 503
 
 
 @pytest.mark.asyncio
 async def test_upload_chat_not_found(auth):
-    # Reader implements VectorWriter (MagicMock() matches via isinstance patch)
+    # Reader implements OrchidVectorWriter (MagicMock() matches via isinstance patch)
     from unittest.mock import patch
 
     chat_repo = AsyncMock()

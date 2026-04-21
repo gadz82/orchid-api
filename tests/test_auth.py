@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.identity import IdentityError
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.identity import OrchidIdentityError
+from orchid_ai.core.state import OrchidAuthContext
 
 from orchid_api.auth import get_auth_context
 from orchid_api.settings import Settings
@@ -16,7 +16,7 @@ from orchid_api.settings import Settings
 
 @pytest.mark.asyncio
 async def test_dev_auth_bypass():
-    """DEV_AUTH_BYPASS returns a dummy AuthContext."""
+    """DEV_AUTH_BYPASS returns a dummy OrchidAuthContext."""
     settings = Settings(dev_auth_bypass=True)
     ctx = await get_auth_context(
         authorization="Bearer anything",
@@ -58,9 +58,9 @@ async def test_no_identity_resolver():
 
 @pytest.mark.asyncio
 async def test_successful_resolution():
-    """Valid token resolves to AuthContext."""
+    """Valid token resolves to OrchidAuthContext."""
     settings = Settings(dev_auth_bypass=False, auth_domain="example.com")
-    expected = AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    expected = OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
     resolver = AsyncMock()
     resolver.resolve = AsyncMock(return_value=expected)
@@ -81,7 +81,7 @@ async def test_successful_resolution():
 async def test_x_auth_domain_overrides_settings():
     """x-auth-domain header overrides settings.auth_domain."""
     settings = Settings(dev_auth_bypass=False, auth_domain="default.com")
-    expected = AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    expected = OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
     resolver = AsyncMock()
     resolver.resolve = AsyncMock(return_value=expected)
@@ -98,10 +98,10 @@ async def test_x_auth_domain_overrides_settings():
 
 @pytest.mark.asyncio
 async def test_identity_error_raises_http_exception():
-    """IdentityError from resolver maps to HTTPException."""
+    """OrchidIdentityError from resolver maps to HTTPException."""
     settings = Settings(dev_auth_bypass=False, auth_domain="x.com")
     resolver = AsyncMock()
-    resolver.resolve = AsyncMock(side_effect=IdentityError("Invalid token", status_code=401))
+    resolver.resolve = AsyncMock(side_effect=OrchidIdentityError("Invalid token", status_code=401))
 
     with patch("orchid_api.auth.app_ctx") as mock_ctx:
         mock_ctx.identity_resolver = resolver
@@ -118,7 +118,7 @@ async def test_identity_error_raises_http_exception():
 async def test_expired_token_raises_401():
     """Expired token is rejected with 401."""
     settings = Settings(dev_auth_bypass=False, auth_domain="x.com")
-    expired_ctx = AuthContext(access_token="tok", tenant_key="t1", user_id="u1", expires_at=1.0)
+    expired_ctx = OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1", expires_at=1.0)
 
     resolver = AsyncMock()
     resolver.resolve = AsyncMock(return_value=expired_ctx)

@@ -26,11 +26,11 @@ from typing import Any
 from fastapi import HTTPException, UploadFile
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from orchid_ai.core.mcp import MCPTokenStore
-from orchid_ai.core.repository import VectorReader, VectorWriter
-from orchid_ai.core.state import AuthContext
-from orchid_ai.mcp.auth_registry import MCPAuthRegistry
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.core.repository import OrchidVectorReader, OrchidVectorWriter
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.mcp.auth_registry import OrchidMCPAuthRegistry
+from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
 from ..models import InterruptResponse, ToolApprovalRequest
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # ── Ownership verification ────────────────────────────────────
 
 
-async def verify_chat_ownership(chat_id: str, auth: AuthContext, chat_repo: ChatStorage) -> Any:
+async def verify_chat_ownership(chat_id: str, auth: OrchidAuthContext, chat_repo: OrchidChatStorage) -> Any:
     """Verify the chat exists and belongs to the authenticated user+tenant.
 
     Returns the chat object on success; raises HTTP 404 on failure.  The
@@ -62,7 +62,7 @@ async def auto_title_if_first_message(
     chat_id: str,
     message: str,
     history_rows: list,
-    chat_repo: ChatStorage,
+    chat_repo: OrchidChatStorage,
 ) -> None:
     """Set the chat title from the first user message (if no prior messages)."""
     if history_rows:
@@ -109,14 +109,14 @@ def build_interrupt_response(exc: Exception, chat_id: str, tenant_key: str) -> I
 async def process_uploaded_files(
     chat_id: str,
     files: list[UploadFile],
-    auth: AuthContext,
+    auth: OrchidAuthContext,
     settings: Settings,
-    reader: VectorReader,
+    reader: OrchidVectorReader,
 ) -> list[str]:
     """Parse + ingest attached files; return prompt-augmentation parts.
 
     Ingestion is skipped when the reader does not implement
-    :class:`VectorWriter`; in that case the files are only parsed into
+    :class:`OrchidVectorWriter`; in that case the files are only parsed into
     the returned context strings and not written to the vector store.
     """
     if not files:
@@ -124,14 +124,14 @@ async def process_uploaded_files(
 
     from orchid_ai.documents.chunker import ChunkConfig
     from orchid_ai.documents.pipeline import extract_text, ingest_document
-    from orchid_ai.rag.scopes import RAGScope
+    from orchid_ai.rag.scopes import OrchidRAGScope
 
-    can_ingest = isinstance(reader, VectorWriter)
+    can_ingest = isinstance(reader, OrchidVectorWriter)
     chunk_config = ChunkConfig(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
     )
-    scope = RAGScope(
+    scope = OrchidRAGScope(
         tenant_id=auth.tenant_key,
         user_id=auth.user_id,
         chat_id=chat_id,
@@ -175,7 +175,7 @@ async def process_uploaded_files(
 
 async def load_conversation_history(
     chat_id: str,
-    chat_repo: ChatStorage,
+    chat_repo: OrchidChatStorage,
     *,
     limit: int = 50,
 ) -> tuple[list[BaseMessage], list]:
@@ -195,9 +195,9 @@ async def load_conversation_history(
 
 
 async def check_mcp_auth(
-    auth: AuthContext,
-    registry: MCPAuthRegistry | None,
-    store: MCPTokenStore | None,
+    auth: OrchidAuthContext,
+    registry: OrchidMCPAuthRegistry | None,
+    store: OrchidMCPTokenStore | None,
 ) -> dict[str, bool]:
     """Return ``{server_name: is_authorized}`` for every OAuth MCP server."""
     if not registry or registry.empty or store is None:
@@ -227,7 +227,7 @@ def build_initial_graph_state(
     *,
     augmented_message: str,
     history: list[BaseMessage],
-    auth: AuthContext,
+    auth: OrchidAuthContext,
     chat_id: str,
     mcp_auth_status: dict[str, bool],
     has_checkpointer: bool,
@@ -268,12 +268,12 @@ async def prepare_graph_state(
     chat_id: str,
     message: str,
     files: list[UploadFile],
-    auth: AuthContext,
+    auth: OrchidAuthContext,
     settings: Settings,
     *,
-    chat_repo: ChatStorage,
+    chat_repo: OrchidChatStorage,
     runtime: OrchidRuntime,
-    mcp_token_store: MCPTokenStore | None,
+    mcp_token_store: OrchidMCPTokenStore | None,
 ) -> PreparedState:
     """Compose the :class:`PreparedState` for both sync and streaming endpoints.
 

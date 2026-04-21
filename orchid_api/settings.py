@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     """All configuration for the agents API, read from env vars."""
 
     # ── Auth ──────────────────────────────────────────────────
-    identity_resolver_class: str = ""  # dotted path to IdentityResolver subclass
+    identity_resolver_class: str = ""  # dotted path to OrchidIdentityResolver subclass
     auth_domain: str = ""  # default domain for identity resolution
 
     # ── LLM ───────────────────────────────────────────────────
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
 
     # ── Chat persistence ───────────────────────────────────
-    chat_storage_class: str = "orchid_ai.persistence.sqlite.SQLiteChatStorage"
+    chat_storage_class: str = "orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage"
     chat_db_dsn: str = "~/.orchid/chats.db"
 
     # Dotted import path of an integrator-supplied migrations package.
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     mcp_notifications_url: str = ""
 
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
-    mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore"
+    mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
 
     # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
