@@ -18,9 +18,9 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from orchid_ai.core.mcp import MCPTokenRecord, MCPTokenStore
-from orchid_ai.core.state import AuthContext
-from orchid_ai.mcp.oauth_state import OAuthPendingState, OAuthStateStore
+from orchid_ai.core.mcp import OrchidMCPTokenRecord, OrchidMCPTokenStore
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState, OrchidOAuthStateStore
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -59,9 +59,9 @@ def _generate_code_challenge(verifier: str) -> str:
 
 @router.get("/servers")
 async def list_mcp_auth_servers(
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     runtime: OrchidRuntime = Depends(get_runtime),
-    store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """List all MCP servers that require OAuth and the current user's authorization status."""
     registry = runtime.mcp_auth_registry
@@ -93,10 +93,10 @@ async def list_mcp_auth_servers(
 @router.get("/servers/{server_name}/authorize")
 async def get_authorize_url(
     server_name: str,
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
     runtime: OrchidRuntime = Depends(get_runtime),
-    state_store: OAuthStateStore = Depends(get_oauth_state_store),
+    state_store: OrchidOAuthStateStore = Depends(get_oauth_state_store),
 ):
     """Generate an OAuth authorization URL for a specific MCP server."""
     registry = runtime.mcp_auth_registry
@@ -126,7 +126,7 @@ async def get_authorize_url(
     # Store pending state
     await state_store.put(
         state,
-        OAuthPendingState(
+        OrchidOAuthPendingState(
             server_name=server_name,
             tenant_id=auth.tenant_key,
             user_id=auth.user_id,
@@ -162,8 +162,8 @@ async def oauth_callback(
     error: str = Query(default=""),
     settings: Settings = Depends(get_settings),
     runtime: OrchidRuntime = Depends(get_runtime),
-    state_store: OAuthStateStore = Depends(get_oauth_state_store),
-    token_store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    state_store: OrchidOAuthStateStore = Depends(get_oauth_state_store),
+    token_store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """OAuth callback — exchanges code for tokens and stores them.
 
@@ -245,7 +245,7 @@ async def oauth_callback(
 
     # Store the token
     now = time.time()
-    record = MCPTokenRecord(
+    record = OrchidMCPTokenRecord(
         server_name=server_name,
         tenant_id=pending.tenant_id,
         user_id=pending.user_id,
@@ -277,8 +277,8 @@ async def oauth_callback(
 @router.delete("/servers/{server_name}/token", status_code=204)
 async def revoke_token(
     server_name: str,
-    auth: AuthContext = Depends(get_auth_context),
-    store: MCPTokenStore = Depends(get_mcp_token_store),
+    auth: OrchidAuthContext = Depends(get_auth_context),
+    store: OrchidMCPTokenStore = Depends(get_mcp_token_store),
 ):
     """Delete the stored OAuth token for the authenticated user and specified server."""
     deleted = await store.delete_token(auth.tenant_key, auth.user_id, server_name)

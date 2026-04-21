@@ -8,9 +8,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langgraph.errors import GraphInterrupt
 
-from orchid_ai.core.mcp import MCPTokenStore
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -34,12 +34,12 @@ async def send_chat_message(
     chat_id: str,
     message: str = Form(...),
     files: list[UploadFile] = File(default=[]),
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
     graph: Any = Depends(get_graph),
-    mcp_token_store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    mcp_token_store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """
     Send a message in a chat — optionally with attached files (non-streaming).
@@ -92,25 +92,25 @@ async def send_chat_message(
 async def upload_documents(
     chat_id: str,
     files: list[UploadFile],
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
 ):
     """Upload documents for chat-scoped RAG."""
-    from orchid_ai.core.repository import VectorWriter
+    from orchid_ai.core.repository import OrchidVectorWriter
     from orchid_ai.documents.chunker import ChunkConfig
     from orchid_ai.documents.pipeline import ingest_document
-    from orchid_ai.rag.scopes import RAGScope
+    from orchid_ai.rag.scopes import OrchidRAGScope
 
     reader = runtime.get_reader()
 
-    if not isinstance(reader, VectorWriter):
+    if not isinstance(reader, OrchidVectorWriter):
         raise HTTPException(status_code=503, detail="Vector store does not support writing")
 
     await verify_chat_ownership(chat_id, auth, chat_repo)
 
-    scope = RAGScope(
+    scope = OrchidRAGScope(
         tenant_id=auth.tenant_key,
         user_id=auth.user_id,
         chat_id=chat_id,

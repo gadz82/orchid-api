@@ -19,10 +19,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
-from orchid_ai.config.schema import AgentsConfig
-from orchid_ai.core.mcp import MCPTokenStore
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.base import ChatStorage
+from orchid_ai.config.schema import OrchidAgentsConfig
+from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
@@ -44,7 +44,7 @@ router = APIRouter(prefix="/chats", tags=["streaming"])
 
 @router.get("/capabilities")
 async def get_capabilities(
-    agents_config: AgentsConfig | None = Depends(get_agents_config_optional),
+    agents_config: OrchidAgentsConfig | None = Depends(get_agents_config_optional),
 ):
     """Return server capabilities so the frontend can detect streaming support.
 
@@ -60,12 +60,12 @@ async def stream_chat_message(
     chat_id: str,
     message: str = Form(...),
     files: list[UploadFile] = File(default=[]),
-    auth: AuthContext = Depends(get_auth_context),
+    auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
-    chat_repo: ChatStorage = Depends(get_chat_repo),
+    chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
     graph: Any = Depends(get_graph),
-    mcp_token_store: MCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    mcp_token_store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
 ):
     """
     Send a message and stream the response as Server-Sent Events.

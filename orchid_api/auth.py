@@ -6,8 +6,8 @@ import logging
 
 from fastapi import Depends, Header, HTTPException
 
-from orchid_ai.core.identity import IdentityError
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.identity import OrchidIdentityError
+from orchid_ai.core.state import OrchidAuthContext
 
 from .context import app_ctx
 from .settings import Settings, get_settings
@@ -19,11 +19,11 @@ async def get_auth_context(
     authorization: str = Header(..., description="Bearer <token>"),
     x_auth_domain: str | None = Header(None, alias="x-auth-domain", description="Platform domain (from frontend)"),
     settings: Settings = Depends(get_settings),
-) -> AuthContext:
-    """Resolve the Bearer token into a full AuthContext."""
+) -> OrchidAuthContext:
+    """Resolve the Bearer token into a full OrchidAuthContext."""
     if settings.dev_auth_bypass:
-        logger.info("[Auth] DEV_AUTH_BYPASS enabled — using dummy AuthContext")
-        return AuthContext(
+        logger.info("[Auth] DEV_AUTH_BYPASS enabled — using dummy OrchidAuthContext")
+        return OrchidAuthContext(
             access_token="dev-token",
             tenant_key="99999",
             user_id="dev-user-00000000",
@@ -44,7 +44,7 @@ async def get_auth_context(
             domain=domain,
             bearer_token=token,
         )
-    except IdentityError as exc:
+    except OrchidIdentityError as exc:
         # Log the full error (internal IdP URLs, upstream status codes,
         # etc.) but only tell the client a generic 401/403 — the
         # original message may leak internal hostnames.

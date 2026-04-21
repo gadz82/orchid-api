@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 
 from orchid_api.models import ChatRequest, IndexRequest
 from orchid_api.routers.legacy import chat_legacy, health, index_data
@@ -16,7 +16,7 @@ from orchid_api.settings import Settings
 
 @pytest.fixture
 def auth():
-    return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
 # ── health ─────────────────────────────────────────────────
@@ -95,7 +95,7 @@ async def test_index_disabled_by_default(auth):
 
 @pytest.mark.asyncio
 async def test_index_no_writer(auth):
-    """When enabled but reader isn't a VectorWriter, index_data should 503."""
+    """When enabled but reader isn't a OrchidVectorWriter, index_data should 503."""
     settings = Settings(allow_index_endpoint=True)
     with pytest.raises(HTTPException) as exc:
         await index_data(IndexRequest(), auth=auth, settings=settings, runtime=_runtime(object()))

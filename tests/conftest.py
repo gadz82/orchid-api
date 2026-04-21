@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from orchid_ai.core.state import AuthContext
-from orchid_ai.persistence.models import ChatMessage, ChatSession
+from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.persistence.models import OrchidChatMessage, OrchidChatSession
 
 
 @pytest.fixture
 def auth_context():
-    return AuthContext(access_token="test-token", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="test-token", tenant_key="t1", user_id="u1")
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def mock_chat_repo():
 @pytest.fixture
 def sample_session():
     now = datetime.now(timezone.utc)
-    return ChatSession(
+    return OrchidChatSession(
         id="chat-001",
         tenant_id="t1",
         user_id="u1",
@@ -48,7 +48,7 @@ def sample_session():
 @pytest.fixture
 def sample_message():
     now = datetime.now(timezone.utc)
-    return ChatMessage(
+    return OrchidChatMessage(
         id="msg-001",
         chat_id="chat-001",
         role="user",

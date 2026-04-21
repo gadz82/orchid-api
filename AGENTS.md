@@ -12,7 +12,7 @@ orchid-api/
     main.py          FastAPI app + lifespan (graph build, storage init, tracing)
     settings.py      Pydantic BaseSettings + YAML overlay via _apply_yaml_config()
     context.py       AppContext dataclass (singleton, populated at startup)
-    auth.py          Bearer token -> AuthContext via pluggable IdentityResolver (ADR-010)
+    auth.py          Bearer token -> OrchidAuthContext via pluggable OrchidIdentityResolver (ADR-010)
     models.py        Pydantic response models
     tracing.py       LangSmith setup
     routers/
@@ -40,13 +40,13 @@ orchid-api/
 
 1. **This is a thin HTTP layer.** Business logic belongs in `orchid/`, not here. Routers call `orchid` APIs and return responses.
 
-2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `AuthContext`. No other code initiates OAuth flows (ADR-010).
+2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `OrchidAuthContext`. No other code initiates OAuth flows (ADR-010).
 
-3. **`AppContext` replaces globals.** All runtime state (runtime, graph, chat_repo, http_client, identity_resolver) lives in `context.py:app_ctx`. The `runtime` field is an `OrchidRuntime` instance that owns the reader, LLM service, and MCP client factory. Routers access it via `from ..context import app_ctx`.
+3. **`AppContext` owns a single `Orchid` handle.** `context.py:app_ctx.orchid` is the framework's mandatory :class:`orchid_ai.Orchid` facade, created by `lifecycle.setup_orchid()`. Legacy fields (`runtime`, `graph`, `chat_repo`, `mcp_token_store`, `agents_config`) are **read-through properties** that delegate to `app_ctx.orchid`, so FastAPI deps (`get_runtime`, `get_graph`, `get_chat_repo`, …) keep their existing contract. The only flat fields are adapter-specific concerns that don't belong inside the framework library: `http_client`, `identity_resolver`, `oauth_state_store`. Routers access everything via `from ..context import app_ctx`.
 
 4. **Routers are split by domain (SRP).** `chats.py` = CRUD, `messages.py` = send + upload, `sharing.py` = share, `legacy.py` = backward compat. New endpoints go in the appropriate router, never in `main.py`.
 
-5. **No agent or framework code here.** No `BaseAgent` subclasses, no graph wiring, no RAG logic. Those belong in `orchid/` or consumer projects.
+5. **No agent or framework code here.** No `OrchidAgent` subclasses, no graph wiring, no RAG logic. Those belong in `orchid/` or consumer projects.
 
 6. **Settings priority:** env vars > `orchid.yml` > hardcoded defaults. The `_YAML_TO_ENV` mapping in `settings.py` translates nested YAML keys to flat env vars.
 
@@ -63,13 +63,13 @@ All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CO
 | `VECTOR_BACKEND` | `qdrant` | Vector store backend |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.SQLiteChatStorage` | Storage backend class |
+| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage` | Storage backend class |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
 | `CHAT_EXTRA_MIGRATIONS_PACKAGE` | `""` | Dotted import path of integrator migrations applied after the framework's (see `orchid_ai/persistence/AGENTS.md`) |
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
-| `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to IdentityResolver |
+| `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to OrchidIdentityResolver |
 | `STARTUP_HOOK` | `""` | Async function called at startup |
-| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.SQLiteMCPTokenStore` | MCP OAuth token store class |
+| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore` | MCP OAuth token store class |
 | `MCP_TOKEN_STORE_DSN` | `~/.orchid/mcp_tokens.db` | Token store connection string |
 | `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
 

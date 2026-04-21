@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from orchid_ai.core.state import AuthContext
+from orchid_ai.core.state import OrchidAuthContext
 
 from orchid_api.context import app_ctx, get_chat_repo
 from orchid_api.models import CreateChatRequest
@@ -20,7 +20,7 @@ from orchid_api.routers.chats import create_chat, delete_chat, get_messages, lis
 
 @pytest.fixture
 def auth():
-    return AuthContext(access_token="tok", tenant_key="t1", user_id="u1")
+    return OrchidAuthContext(access_token="tok", tenant_key="t1", user_id="u1")
 
 
 # ── get_chat_repo dependency ───────────────────────────────
@@ -28,14 +28,16 @@ def auth():
 
 class TestGetChatRepoDep:
     def test_raises_503_when_unset(self):
-        original = app_ctx.chat_repo
-        app_ctx.chat_repo = None
+        # ``chat_repo`` is now a read-through property of ``app_ctx.orchid``;
+        # swap the underlying handle to ``None`` to simulate pre-startup.
+        original = app_ctx.orchid
+        app_ctx.orchid = None
         try:
             with pytest.raises(HTTPException) as exc:
                 get_chat_repo()
             assert exc.value.status_code == 503
         finally:
-            app_ctx.chat_repo = original
+            app_ctx.orchid = original
 
 
 # ── create_chat ────────────────────────────────────────────

@@ -32,15 +32,14 @@ Example — mount orchid into an existing app::
     app.include_router(resume.router,    prefix="/ai")
 
 After ``setup_orchid()`` returns, ``app_ctx`` is fully populated with:
-  - ``graph`` (compiled LangGraph)
-  - ``runtime`` (OrchidRuntime + checkpointer + MCP auth registry)
-  - ``chat_repo``, ``mcp_token_store``, ``oauth_state_store``,
-    ``agents_config``, ``identity_resolver``
+  - ``orchid`` (the :class:`Orchid` facade owning runtime + graph + persistence)
+  - ``identity_resolver``, ``oauth_state_store``, ``http_client``
+    (adapter-specific concerns managed at the HTTP layer)
 
 The heavy wiring (reader, chat storage, checkpointer, ...) is delegated
-to :func:`orchid_ai.bootstrap.build_runtime`; this module only owns its
-adapter-specific concerns (tracing, shared HTTP client, identity
-resolver, graph compilation).
+to :class:`orchid_ai.Orchid`; this module only owns its adapter-specific
+concerns (tracing, shared HTTP client, identity resolver, OAuth state
+store).
 """
 
 from __future__ import annotations
@@ -49,8 +48,7 @@ import logging
 
 import httpx
 
-from orchid_ai.bootstrap import build_runtime
-from orchid_ai.graph.graph import build_graph
+from orchid_ai import Orchid
 from orchid_ai.mcp.oauth_state import build_oauth_state_store
 from orchid_ai.utils import import_class
 
@@ -62,21 +60,21 @@ logger = logging.getLogger(__name__)
 
 
 async def setup_orchid(settings: Settings | None = None) -> None:
-    """Initialize the orchid-api runtime (graph, storage, auth, checkpointer).
+    """Initialise the orchid-api runtime.
 
-    Populates the global ``app_ctx`` singleton with everything the built-in
-    routers need.  Safe to call from any FastAPI lifespan.
+    Populates the global ``app_ctx`` singleton with everything the
+    built-in routers need.  Safe to call from any FastAPI lifespan.
 
     Parameters
     ----------
     settings : Settings | None
-        Optional pre-built Settings object.  When ``None``, reads from env
-        vars / ``ORCHID_CONFIG`` via ``get_settings()``.
+        Optional pre-built Settings object.  When ``None``, reads from
+        env vars / ``ORCHID_CONFIG`` via ``get_settings()``.
 
     Raises
     ------
-    Any exception from ``build_runtime``, ``build_graph``, or
-    consumer-provided startup hooks.
+    Any exception from :meth:`Orchid.from_config_path`, the OAuth state
+    store factory, or consumer-provided startup hooks.
     """
     s = settings or get_settings()
 
@@ -100,10 +98,12 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
 
-    # ── Delegate runtime wiring to the shared builder ─────
-    # ``apply_yaml=False`` because orchid-api applies YAML → env at module
-    # import time (settings.py).
-    bootstrap = await build_runtime(
+    # ── Build the framework via the mandatory ``Orchid`` facade ──
+    # orchid-api applies YAML → env at module import time (settings.py),
+    # so ``apply_yaml=False`` prevents a double-application; every knob
+    # below is already resolved from ``Settings``.
+    app_ctx.orchid = await Orchid.from_config_path(
+        config_path="",
         apply_yaml=False,
         agents_config_path=s.agents_config_path,
         model=s.litellm_model,
@@ -121,12 +121,6 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         startup_hook_kwargs={"settings": s},
     )
 
-    app_ctx._bootstrap = bootstrap
-    app_ctx.runtime = bootstrap.runtime
-    app_ctx.chat_repo = bootstrap.chat_repo
-    app_ctx.mcp_token_store = bootstrap.mcp_token_store
-    app_ctx.agents_config = bootstrap.config
-
     # ── OAuth PKCE / CSRF state store ─────────────────────
     app_ctx.oauth_state_store = await build_oauth_state_store(
         store_type=s.oauth_state_store_class,
@@ -134,25 +128,25 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         ttl_seconds=float(s.oauth_state_ttl_seconds),
     )
 
-    # ── Build the compiled LangGraph ──────────────────────
-    app_ctx.graph = build_graph(config=bootstrap.config, runtime=bootstrap.runtime)
     logger.info(
         "[API] Ready — model=%s, vector_backend=%s, agents=%s",
         s.litellm_model,
         s.vector_backend,
-        list(bootstrap.config.agents.keys()),
+        list(app_ctx.orchid.config.agents.keys()),
     )
 
 
 async def teardown_orchid() -> None:
     """Release all orchid-api resources.
 
-    Idempotent: safe to call even when ``setup_orchid`` was not called or
-    already torn down.  Call this from your FastAPI lifespan after ``yield``.
+    Idempotent: safe to call even when ``setup_orchid`` was not called
+    or already torn down.  Call this from your FastAPI lifespan after
+    ``yield``.
 
     Delegates the library-level resources to
-    :meth:`context.AppContext.release_resources` and only retains the
-    adapter-specific HTTP client close.
+    :meth:`context.AppContext.release_resources` (which in turn calls
+    :meth:`Orchid.close`) and only retains the adapter-specific HTTP
+    client close.
     """
     await app_ctx.release_resources()
 
