@@ -1,10 +1,23 @@
-"""MCP per-server OAuth authorization endpoints.
+"""MCP per-server OAuth authorization endpoints (MCP 2025-03-26 spec).
 
-Provides the API surface for third-party OAuth flows:
+Provides the API surface that drives the browser-visible half of the
+RFC 9728 → RFC 8414 → RFC 7591 discovery chain implemented in
+:mod:`orchid_ai.mcp.discovery`:
+
   - ``GET  /mcp/auth/servers``                  — list OAuth servers + user status
+  - ``POST /mcp/auth/servers/{name}/discover``  — explicit trigger for the
+                                                   discovery chain when a
+                                                   server's 401 details
+                                                   are known to the API
   - ``GET  /mcp/auth/servers/{name}/authorize`` — generate authorization URL
   - ``GET  /mcp/auth/callback``                 — IdP redirect callback
   - ``DELETE /mcp/auth/servers/{name}/token``   — revoke a stored token
+
+All endpoint metadata (``authorization_endpoint``, ``token_endpoint``,
+``client_id``, ``client_secret``) comes from
+:class:`~orchid_ai.core.mcp.OrchidMCPClientRegistrationStore` which is
+populated by the discovery service — there is nothing to configure in
+YAML beyond ``auth.mode: oauth``.
 """
 
 from __future__ import annotations
@@ -17,14 +30,23 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
-from orchid_ai.core.mcp import OrchidMCPTokenRecord, OrchidMCPTokenStore
+from orchid_ai.core.mcp import (
+    OrchidMCPClientRegistrationStore,
+    OrchidMCPDiscoveryError,
+    OrchidMCPTokenRecord,
+    OrchidMCPTokenStore,
+)
 from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.mcp.discovery import OrchidMCPAuthDiscovery, probe_mcp_server_for_resource_metadata
 from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState, OrchidOAuthStateStore
 from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
 from ..context import (
+    get_mcp_client_registration_store,
+    get_mcp_client_registration_store_optional,
     get_mcp_token_store,
     get_mcp_token_store_optional,
     get_oauth_state_store,
@@ -35,11 +57,6 @@ from ..settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mcp/auth", tags=["mcp-auth"])
-
-# Optional-vs-strict asymmetry: ``list_mcp_auth_servers`` / ``oauth_callback``
-# tolerate a missing token store (read-only / best-effort paths), while
-# ``revoke_token`` uses the strict :func:`get_mcp_token_store` dep — you
-# cannot revoke a token that was never saved, so 503 is the right signal.
 
 
 # ── PKCE helpers ──────────────────────────────────────────────
@@ -54,6 +71,28 @@ def _generate_code_challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
+def _callback_url(settings: Settings) -> str:
+    """Single source of truth for the registered redirect URI."""
+    return f"{settings.api_base_url.rstrip('/')}/mcp/auth/callback"
+
+
+# ── Request / response models ─────────────────────────────────
+
+
+class DiscoverRequest(BaseModel):
+    """Input to the explicit discovery endpoint.
+
+    The framework ordinarily triggers discovery automatically when the
+    MCP transport surfaces a 401 with a ``WWW-Authenticate`` header.
+    This endpoint exists as an escape hatch for operators who want to
+    prime the registration store before the first user connects — or
+    for integrators whose MCP client doesn't capture the
+    ``resource_metadata`` URL itself.
+    """
+
+    resource_metadata_url: str
+
+
 # ── Endpoints ─────────────────────────────────────────────────
 
 
@@ -61,9 +100,16 @@ def _generate_code_challenge(verifier: str) -> str:
 async def list_mcp_auth_servers(
     auth: OrchidAuthContext = Depends(get_auth_context),
     runtime: OrchidRuntime = Depends(get_runtime),
-    store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    token_store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    registration_store: OrchidMCPClientRegistrationStore | None = Depends(get_mcp_client_registration_store_optional),
 ):
-    """List all MCP servers that require OAuth and the current user's authorization status."""
+    """List all MCP servers that require OAuth and the current user's status.
+
+    ``discovered`` indicates whether the RFC 9728 → RFC 8414 → RFC 7591
+    chain has already run for the server.  When ``False`` the
+    ``authorize`` endpoint will trigger it on first call; when ``True``
+    the cached registration is reused.
+    """
     registry = runtime.mcp_auth_registry
     if not registry or registry.empty:
         return []
@@ -72,22 +118,73 @@ async def list_mcp_auth_servers(
     for name, info in registry.oauth_servers.items():
         authorized = False
         token_expired = False
-        if store:
-            token = await store.get_token(auth.tenant_key, auth.user_id, name)
+        if token_store:
+            token = await token_store.get_token(auth.tenant_key, auth.user_id, name)
             if token:
                 authorized = True
                 token_expired = token.is_expired
+
+        registration = None
+        if registration_store:
+            registration = await registration_store.get(name)
+
         results.append(
             {
                 "server_name": name,
-                "client_id": info.client_id,
-                "scopes": info.scopes,
+                "agent_names": list(info.agent_names),
                 "authorized": authorized and not token_expired,
                 "token_expired": token_expired,
-                "agent_names": list(info.agent_names),
+                "discovered": registration is not None,
+                "scopes": registration.scopes_supported if registration else "",
             }
         )
     return results
+
+
+@router.post("/servers/{server_name}/discover")
+async def trigger_discovery(
+    server_name: str,
+    body: DiscoverRequest,
+    _auth: OrchidAuthContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+    runtime: OrchidRuntime = Depends(get_runtime),
+    registration_store: OrchidMCPClientRegistrationStore = Depends(get_mcp_client_registration_store),
+):
+    """Run the MCP 2025-03-26 discovery chain for a single server.
+
+    Idempotent — returns the cached registration on subsequent calls.
+    Authentication is required so only operators / authorised users can
+    force (re-)discovery against a chosen ``resource_metadata_url``.
+    """
+    registry = runtime.mcp_auth_registry
+    if not registry or not registry.requires_oauth(server_name):
+        raise HTTPException(
+            status_code=404,
+            detail=f"MCP server '{server_name}' is not registered as OAuth-requiring",
+        )
+
+    discovery = OrchidMCPAuthDiscovery(
+        store=registration_store,
+        redirect_uri=_callback_url(settings),
+    )
+
+    try:
+        record = await discovery.ensure_registration(
+            server_name=server_name,
+            resource_metadata_url=body.resource_metadata_url,
+        )
+    except OrchidMCPDiscoveryError as exc:
+        logger.warning("[MCP OAuth] Discovery failed for '%s': %s", server_name, exc.reason)
+        raise HTTPException(status_code=502, detail=exc.reason) from exc
+
+    return {
+        "server_name": record.server_name,
+        "discovered": True,
+        "authorization_endpoint": record.authorization_endpoint,
+        "token_endpoint": record.token_endpoint,
+        "issuer": record.issuer,
+        "scopes_supported": record.scopes_supported,
+    }
 
 
 @router.get("/servers/{server_name}/authorize")
@@ -97,33 +194,63 @@ async def get_authorize_url(
     settings: Settings = Depends(get_settings),
     runtime: OrchidRuntime = Depends(get_runtime),
     state_store: OrchidOAuthStateStore = Depends(get_oauth_state_store),
+    registration_store: OrchidMCPClientRegistrationStore = Depends(get_mcp_client_registration_store),
 ):
-    """Generate an OAuth authorization URL for a specific MCP server."""
+    """Generate an OAuth authorization URL for a specific MCP server.
+
+    Requires the discovery chain to have been run at least once for the
+    server — clients POST to ``/discover`` first (or rely on the
+    transport-level auto-trigger once that's wired).
+    """
     registry = runtime.mcp_auth_registry
     if not registry:
         raise HTTPException(status_code=404, detail="No MCP auth registry configured")
-
     server_info = registry.get_server(server_name)
-    if not server_info:
-        raise HTTPException(status_code=404, detail=f"MCP server '{server_name}' not found or does not require OAuth")
+    if server_info is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"MCP server '{server_name}' not found or does not require OAuth",
+        )
 
-    # Resolve authorization endpoint (OIDC discovery if needed)
-    auth_endpoint = server_info.authorization_endpoint
-    token_endpoint = server_info.token_endpoint
-    if not auth_endpoint and server_info.issuer:
-        endpoints = await _discover_oidc_endpoints(server_info.issuer)
-        auth_endpoint = endpoints.get("authorization_endpoint", "")
-        token_endpoint = endpoints.get("token_endpoint", token_endpoint)
+    # Auto-discover on first Connect: probe the MCP server for the
+    # RFC 9728 metadata pointer, run the three-RFC chain, and persist.
+    # Subsequent calls hit the cached row instead.
+    registration = await registration_store.get(server_name)
+    if registration is None:
+        try:
+            metadata_url = await probe_mcp_server_for_resource_metadata(
+                mcp_url=server_info.url,
+                server_name=server_name,
+            )
+            discovery = OrchidMCPAuthDiscovery(
+                store=registration_store,
+                redirect_uri=_callback_url(settings),
+            )
+            registration = await discovery.ensure_registration(
+                server_name=server_name,
+                resource_metadata_url=metadata_url,
+            )
+        except Exception as exc:
+            reason = exc.reason if hasattr(exc, "reason") else str(exc)
+            logger.warning(
+                "[MCP OAuth] Auto-discovery failed for '%s': %s",
+                server_name,
+                reason,
+            )
+            raise HTTPException(status_code=502, detail=reason) from exc
 
-    if not auth_endpoint:
-        raise HTTPException(status_code=500, detail=f"Cannot resolve authorization endpoint for '{server_name}'")
+    if not registration.authorization_endpoint:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Stored registration for '{server_name}' lacks an "
+                f"authorization_endpoint — delete the row and re-run discovery."
+            ),
+        )
 
-    # Generate PKCE pair + state
     code_verifier = _generate_code_verifier()
     code_challenge = _generate_code_challenge(code_verifier)
     state = secrets.token_urlsafe(32)
-
-    # Store pending state
     await state_store.put(
         state,
         OrchidOAuthPendingState(
@@ -131,27 +258,23 @@ async def get_authorize_url(
             tenant_id=auth.tenant_key,
             user_id=auth.user_id,
             code_verifier=code_verifier,
-            token_endpoint=token_endpoint or "",
+            token_endpoint=registration.token_endpoint,
             created_at=time.time(),
         ),
     )
 
-    redirect_uri = f"{settings.api_base_url}/mcp/auth/callback"
-
-    # Build authorization URL
     from urllib.parse import urlencode
 
     params = {
         "response_type": "code",
-        "client_id": server_info.client_id,
-        "redirect_uri": redirect_uri,
-        "scope": server_info.scopes,
+        "client_id": registration.client_id,
+        "redirect_uri": _callback_url(settings),
+        "scope": registration.scopes_supported or "openid",
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
-    authorize_url = f"{auth_endpoint}?{urlencode(params)}"
-
+    authorize_url = f"{registration.authorization_endpoint}?{urlencode(params)}"
     return {"authorize_url": authorize_url, "state": state}
 
 
@@ -161,14 +284,15 @@ async def oauth_callback(
     state: str = Query(default=""),
     error: str = Query(default=""),
     settings: Settings = Depends(get_settings),
-    runtime: OrchidRuntime = Depends(get_runtime),
     state_store: OrchidOAuthStateStore = Depends(get_oauth_state_store),
     token_store: OrchidMCPTokenStore | None = Depends(get_mcp_token_store_optional),
+    registration_store: OrchidMCPClientRegistrationStore = Depends(get_mcp_client_registration_store),
 ):
-    """OAuth callback — exchanges code for tokens and stores them.
+    """OAuth callback — exchanges the code for tokens and persists them.
 
     This endpoint does NOT require Bearer auth — it is called by the
-    IdP redirect.  Authentication is via PKCE + CSRF state validation.
+    authorization server's redirect.  Authentication is via PKCE + CSRF
+    state validation.
     """
     if error:
         return HTMLResponse(
@@ -191,54 +315,62 @@ async def oauth_callback(
         )
 
     server_name = pending.server_name
-    registry = runtime.mcp_auth_registry
-    if not registry:
-        return HTMLResponse(
-            content="<html><body><h2>Server configuration error</h2><script>window.close();</script></body></html>",
-            status_code=500,
-        )
-
-    server_info = registry.get_server(server_name)
-    if not server_info:
+    registration = await registration_store.get(server_name)
+    if registration is None:
         return HTMLResponse(
             content=f"<html><body><h2>Unknown server: {server_name}</h2><script>window.close();</script></body></html>",
             status_code=500,
         )
 
-    # Exchange code for tokens
-    token_endpoint = pending.token_endpoint or server_info.token_endpoint
-    if not token_endpoint and server_info.issuer:
-        endpoints = await _discover_oidc_endpoints(server_info.issuer)
-        token_endpoint = endpoints.get("token_endpoint", "")
-
+    token_endpoint = pending.token_endpoint or registration.token_endpoint
     if not token_endpoint:
         return HTMLResponse(
-            content="<html><body><h2>No token endpoint configured</h2><script>window.close();</script></body></html>",
+            content="<html><body><h2>No token endpoint available</h2><script>window.close();</script></body></html>",
             status_code=500,
         )
 
-    redirect_uri = f"{settings.api_base_url}/mcp/auth/callback"
+    redirect_uri = _callback_url(settings)
 
     try:
         import httpx
 
-        # Confidential clients (``client_secret_env`` resolved at
-        # registry-build time) send the secret via HTTP Basic auth per
-        # RFC 6749 §2.3.1 — this is the more broadly-compatible form and
-        # the one Docebo's /oauth2/token expects.  Public clients
-        # (PKCE-only) leave ``client_secret`` empty and rely on the
-        # ``code_verifier`` alone.
+        # Send client credentials per the authorization server's
+        # advertised ``token_endpoint_auth_methods_supported``:
+        #   - ``client_secret_basic`` → HTTP Basic auth header
+        #   - ``client_secret_post`` (default) → form body field
+        #   - ``none`` (public PKCE-only client) → no secret sent
         request_data = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirect_uri,
-            "client_id": server_info.client_id,
+            "client_id": registration.client_id,
             "code_verifier": pending.code_verifier,
         }
-        request_auth = (server_info.client_id, server_info.client_secret) if server_info.client_secret else None
+        basic_auth = None
+        if registration.client_secret:
+            if registration.uses_basic_auth:
+                basic_auth = (registration.client_id, registration.client_secret)
+            else:
+                request_data["client_secret"] = registration.client_secret
+
         async with httpx.AsyncClient(timeout=15.0) as http:
-            resp = await http.post(token_endpoint, data=request_data, auth=request_auth)
-            resp.raise_for_status()
+            resp = await http.post(token_endpoint, data=request_data, auth=basic_auth)
+            if resp.status_code >= 400:
+                logger.error(
+                    "[MCP OAuth] Token exchange rejected by '%s' (%d): %s",
+                    token_endpoint,
+                    resp.status_code,
+                    resp.text[:1000],
+                )
+                safe_body = resp.text[:1000].replace("<", "&lt;").replace(">", "&gt;")
+                return HTMLResponse(
+                    content=(
+                        f"<html><body><h2>Token exchange failed ({resp.status_code})</h2>"
+                        f"<pre>{safe_body}</pre>"
+                        "<script>window.close();</script></body></html>"
+                    ),
+                    status_code=resp.status_code,
+                )
             data = resp.json()
     except Exception as exc:
         logger.error("[MCP OAuth] Token exchange failed for '%s': %s", server_name, exc)
@@ -248,7 +380,6 @@ async def oauth_callback(
             status_code=500,
         )
 
-    # Store the token
     now = time.time()
     record = OrchidMCPTokenRecord(
         server_name=server_name,
@@ -257,22 +388,33 @@ async def oauth_callback(
         access_token=data["access_token"],
         refresh_token=data.get("refresh_token", ""),
         expires_at=now + data.get("expires_in", 3600),
-        scopes=server_info.scopes,
+        scopes=registration.scopes_supported,
         created_at=now,
         updated_at=now,
     )
-
     if token_store is not None:
         await token_store.save_token(record)
-        logger.info("[MCP OAuth] Token stored for server '%s', user '%s'", server_name, pending.user_id)
+        logger.info(
+            "[MCP OAuth] Token stored for server '%s', user '%s'",
+            server_name,
+            pending.user_id,
+        )
 
-    # Return HTML that notifies the opener window and closes the popup
+    # ``targetOrigin = "*"`` because the popup lives on the API's
+    # origin (e.g. ``http://localhost:8080``) while the opener is the
+    # frontend (``http://localhost:3000`` — or anywhere the frontend is
+    # hosted).  The browser refuses to deliver ``postMessage`` when
+    # ``targetOrigin`` doesn't match the opener's origin, so scoping to
+    # ``window.location.origin`` (the API) silently drops the message.
+    # The payload carries no secrets — just a completion signal with
+    # the server name — so the wildcard is safe.  Receivers can still
+    # (and should) validate ``event.data.type`` on their end.
     return HTMLResponse(
         content=(
             "<html><body><h2>Authorization successful</h2>"
             "<p>You can close this window.</p>"
             "<script>"
-            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, window.location.origin);'
+            f'window.opener?.postMessage({{type:"mcp-auth-complete",server:"{server_name}"}}, "*");'
             "setTimeout(function() { window.close(); }, 1000);"
             "</script></body></html>"
         )
@@ -285,40 +427,8 @@ async def revoke_token(
     auth: OrchidAuthContext = Depends(get_auth_context),
     store: OrchidMCPTokenStore = Depends(get_mcp_token_store),
 ):
-    """Delete the stored OAuth token for the authenticated user and specified server."""
+    """Delete the stored OAuth token for the authenticated user + server."""
     deleted = await store.delete_token(auth.tenant_key, auth.user_id, server_name)
     if not deleted:
         raise HTTPException(status_code=404, detail="No token found for this server")
     logger.info("[MCP OAuth] Token revoked for server '%s', user '%s'", server_name, auth.user_id)
-
-
-# ── OIDC discovery (cached) ──────────────────────────────────
-
-_oidc_cache: dict[str, dict[str, str]] = {}
-
-
-async def _discover_oidc_endpoints(issuer: str) -> dict[str, str]:
-    """Fetch OIDC discovery document and return key endpoints."""
-    if issuer in _oidc_cache:
-        return _oidc_cache[issuer]
-
-    well_known = f"{issuer.rstrip('/')}/.well-known/openid-configuration"
-    try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=10.0) as http:
-            resp = await http.get(well_known)
-            resp.raise_for_status()
-            data = resp.json()
-
-        result = {
-            "authorization_endpoint": data.get("authorization_endpoint", ""),
-            "token_endpoint": data.get("token_endpoint", ""),
-            "userinfo_endpoint": data.get("userinfo_endpoint", ""),
-        }
-        _oidc_cache[issuer] = result
-        logger.info("[MCP OAuth] OIDC discovery for '%s': %s", issuer, list(result.keys()))
-        return result
-    except Exception as exc:
-        logger.warning("[MCP OAuth] OIDC discovery failed for '%s': %s", issuer, exc)
-        return {}

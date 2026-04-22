@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from orchid_ai import Orchid, OrchidRuntime
 from orchid_ai.config.schema import OrchidAgentsConfig
 from orchid_ai.core.identity import OrchidIdentityResolver
-from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.core.mcp import OrchidMCPClientRegistrationStore, OrchidMCPTokenStore
 from orchid_ai.mcp.oauth_state import OrchidOAuthStateStore
 from orchid_ai.persistence.base import OrchidChatStorage
 
@@ -51,6 +51,11 @@ class AppContext:
     @property
     def mcp_token_store(self) -> OrchidMCPTokenStore | None:
         return self.orchid.mcp_token_store if self.orchid is not None else None
+
+    @property
+    def mcp_client_registration_store(self) -> OrchidMCPClientRegistrationStore | None:
+        """Discovered per-server OAuth metadata + DCR credentials store."""
+        return self.orchid.runtime.mcp_client_registration_store if self.orchid is not None else None
 
     @property
     def agents_config(self) -> OrchidAgentsConfig | None:
@@ -140,6 +145,22 @@ def get_mcp_token_store() -> OrchidMCPTokenStore:
 def get_mcp_token_store_optional() -> OrchidMCPTokenStore | None:
     """FastAPI dependency — return the MCP token store or ``None``."""
     return app_ctx.mcp_token_store
+
+
+def get_mcp_client_registration_store() -> OrchidMCPClientRegistrationStore:
+    """FastAPI dependency — discovered OAuth metadata store or raises 503."""
+    store = app_ctx.mcp_client_registration_store
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="MCP client-registration store not initialised",
+        )
+    return store
+
+
+def get_mcp_client_registration_store_optional() -> OrchidMCPClientRegistrationStore | None:
+    """FastAPI dependency — return the registration store or ``None``."""
+    return app_ctx.mcp_client_registration_store
 
 
 def get_agents_config_optional() -> OrchidAgentsConfig | None:

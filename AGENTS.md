@@ -81,7 +81,7 @@ pip install orchid-ai orchid-api
 ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --port 8000
 ```
 
-Dockerfiles live in consumer projects (`docebo/Dockerfile`, `examples/Dockerfile`), not here.
+Dockerfiles live in consumer projects (each integrator ships their own), not here.
 
 ## Endpoints
 
