@@ -222,17 +222,22 @@ async def oauth_callback(
     try:
         import httpx
 
+        # Confidential clients (``client_secret_env`` resolved at
+        # registry-build time) send the secret via HTTP Basic auth per
+        # RFC 6749 §2.3.1 — this is the more broadly-compatible form and
+        # the one Docebo's /oauth2/token expects.  Public clients
+        # (PKCE-only) leave ``client_secret`` empty and rely on the
+        # ``code_verifier`` alone.
+        request_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": server_info.client_id,
+            "code_verifier": pending.code_verifier,
+        }
+        request_auth = (server_info.client_id, server_info.client_secret) if server_info.client_secret else None
         async with httpx.AsyncClient(timeout=15.0) as http:
-            resp = await http.post(
-                token_endpoint,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": redirect_uri,
-                    "client_id": server_info.client_id,
-                    "code_verifier": pending.code_verifier,
-                },
-            )
+            resp = await http.post(token_endpoint, data=request_data, auth=request_auth)
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
