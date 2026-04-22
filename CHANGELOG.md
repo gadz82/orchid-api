@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.2.2 (2026-04-22)
+
+### Bug Fixes
+
+- Mcp oauth management fixes to support http mcp oauth configuration.
+  ([`1f9150c`](https://github.com/gadz82/orchid-api/commit/1f9150c902bfe8a210927a7c1bffb217a6c0ad20))
+
+- Mcp oauth management fixes to support http mcp oauth configuration.
+  ([`cfc1672`](https://github.com/gadz82/orchid-api/commit/cfc167277515a59cc43461a395c3978c282a52d7))
+
+
 ## v1.2.1 (2026-04-21)
 
 ### Bug Fixes
