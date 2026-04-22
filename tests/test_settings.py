@@ -108,7 +108,13 @@ class TestApplyYamlConfig:
 
 class TestYamlToEnvMapping:
     def test_all_sections_covered(self):
-        """Verify the mapping covers expected sections."""
+        """Verify the mapping covers expected sections.
+
+        Note: there is no top-level ``mcp`` section in the mapping —
+        MCP server URLs live in ``agents.yaml`` (with ``${ENV_VAR}``
+        substitution) rather than a framework-pre-declared slot, so no
+        vendor-specific names leak into the framework surface.
+        """
         sections = {k[0] for k in _YAML_TO_ENV.keys()}
         expected = {
             "agents",
@@ -118,7 +124,6 @@ class TestYamlToEnvMapping:
             "rag",
             "upload",
             "storage",
-            "mcp",
             "mcp_auth",
             "checkpointer",
             "api",

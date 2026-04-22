@@ -94,13 +94,18 @@ class Settings(BaseSettings):
     # ops workflows.
     allow_index_endpoint: bool = False
 
-    # ── MCP ───────────────────────────────────────────────────
-    mcp_catalog_url: str = ""
-    mcp_notifications_url: str = ""
-
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
     mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
+
+    # ── MCP 2025-03-26 client-registration store (RFC 7591 DCR) ──
+    # Per-server discovered endpoints + DCR-issued credentials.  Same
+    # DSN as the chat + token stores by default (all three backed by
+    # the same DB via shared migrations v001 / v002).
+    mcp_client_registration_store_class: str = (
+        "orchid_ai.persistence.mcp_client_registration_sqlite.OrchidSQLiteMCPClientRegistrationStore"
+    )
+    mcp_client_registration_store_dsn: str = "~/.orchid/chats.db"
 
     # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
     # Built-in types: "memory" (default, single-instance).  Swap for a

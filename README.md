@@ -227,14 +227,17 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 
 ## Docker
 
-`orchid-api` is a pip package — it does not ship a Dockerfile. Dockerfiles live in consumer projects that depend on it:
+`orchid-api` is a pip package — it does not ship a Dockerfile. Each
+integrator owns its own Dockerfile + compose file; refer to the
+examples in this monorepo (or roll your own) for a starting point:
 
-- **`docebo/Dockerfile`** — Docebo deployment (PostgreSQL + Qdrant)
 - **`examples/Dockerfile`** — Demo deployment (SQLite + Qdrant)
+- Each consumer project under the monorepo defines its own production
+  Dockerfile tailored to its persistence and vector backends.
 
 ```bash
+# Typical pattern: start the stack with a compose file the consumer project owns.
 docker compose -f docker-compose.demo.yml up --build    # examples (SQLite)
-docker compose -f docker-compose.local.yml up --build   # docebo (PostgreSQL + Qdrant)
 ```
 
 ## Development
