@@ -247,6 +247,49 @@ pip install -e ".[dev]"
 ORCHID_CONFIG=orchid.yml uvicorn orchid_api.main:app --reload --port 8000
 ```
 
+## MCP gateway exposure (`/mcp-gateway/config`)
+
+Serves the resolved `OrchidMCPGatewayConfig` — tool title/description
+overrides + MCP Prompt templates — consumed by the `orchid-mcp` gateway
+at each MCP session init. The feature is **optional**: no `mcp_gateway`
+block in `agents.yaml` and no env vars → empty config returned.
+
+Resolution order (highest → lowest):
+
+1. **Env vars**:
+   - `ORCHID_MCP_GATEWAY_TOOL_<TOOL_NAME_UPPER>_TITLE`
+   - `ORCHID_MCP_GATEWAY_TOOL_<TOOL_NAME_UPPER>_DESCRIPTION`
+   - `ORCHID_MCP_GATEWAY_PROMPTS_FILE=/path/to/prompts.yml` (replaces
+     the list, not merged — accepts a top-level list or `{prompts: [...]}`)
+2. `agents.yaml` `mcp_gateway:` block (framework schema).
+3. Empty defaults.
+
+Example:
+
+```yaml
+# agents.yaml
+mcp_gateway:
+  tools:
+    orchid_ask:
+      title: "Ask the Docebo AI"
+  prompts:
+    - name: compliance_report
+      description: "Generate a compliance-completion report."
+      arguments:
+        - { name: department, required: true }
+      template: "Produce a compliance report for {{department}}."
+```
+
+```bash
+# Override a title without touching the YAML:
+ORCHID_MCP_GATEWAY_TOOL_ORCHID_ASK_TITLE="Ask the Docebo AI"
+# Point at an external prompts file:
+ORCHID_MCP_GATEWAY_PROMPTS_FILE=/etc/orchid/prompts.yml
+```
+
+Auth: the endpoint goes through the standard `get_auth_context`
+dependency (respects `DEV_AUTH_BYPASS`).
+
 ## Testing
 
 ```bash
