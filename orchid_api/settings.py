@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────
     identity_resolver_class: str = ""  # dotted path to OrchidIdentityResolver subclass
     auth_domain: str = ""  # default domain for identity resolution
+    # Dotted path to an OrchidAuthConfigProvider subclass.  When set,
+    # ``GET /auth-info`` returns the resolved upstream-OAuth discovery
+    # block so downstream OAuth clients (MCP gateway, frontends) can
+    # auto-configure instead of duplicating endpoint/client_id env vars.
+    auth_config_provider_class: str = ""
+    # Name of the env var that holds the PUBLIC upstream-OAuth
+    # ``client_id``.  The provider reads the env var named here at
+    # runtime.  A level of indirection so ``orchid.yml`` can be checked
+    # into version control without leaking the actual client id.
+    auth_oauth_client_id_env: str = ""
+    # Advertised OAuth scope for downstream clients — empty string means
+    # "use whatever the upstream defaults to".
+    auth_oauth_scope: str = ""
 
     # ── LLM ───────────────────────────────────────────────────
     # Provider API keys (GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
