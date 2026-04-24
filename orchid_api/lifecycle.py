@@ -98,6 +98,18 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
 
+    # ── Auth-config provider (optional — upstream OAuth discovery) ──
+    # Resolves non-secret upstream-OAuth endpoints + public client_id
+    # from consumer-provided config.  Surfaced over
+    # ``GET /auth-info`` so downstream OAuth clients (MCP gateway,
+    # frontends) can auto-configure instead of duplicating env vars.
+    if s.auth_config_provider_class:
+        provider_cls = import_class(s.auth_config_provider_class)
+        app_ctx.auth_config_provider = provider_cls()
+        logger.info("[API] Auth config provider: %s", s.auth_config_provider_class)
+    else:
+        app_ctx.auth_config_provider = None
+
     # ── Build the framework via the mandatory ``Orchid`` facade ──
     # orchid-api applies YAML → env at module import time (settings.py),
     # so ``apply_yaml=False`` prevents a double-application; every knob
