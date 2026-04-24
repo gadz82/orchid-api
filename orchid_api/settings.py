@@ -120,12 +120,27 @@ class Settings(BaseSettings):
 
     # ── MCP 2025-03-26 client-registration store (RFC 7591 DCR) ──
     # Per-server discovered endpoints + DCR-issued credentials.  Same
-    # DSN as the chat + token stores by default (all three backed by
-    # the same DB via shared migrations v001 / v002).
+    # DSN as the chat + token stores by default (all four backed by
+    # the same DB via the unified v001 migration).
     mcp_client_registration_store_class: str = (
         "orchid_ai.persistence.mcp_client_registration_sqlite.OrchidSQLiteMCPClientRegistrationStore"
     )
     mcp_client_registration_store_dsn: str = "~/.orchid/chats.db"
+
+    # ── MCP gateway-state store (Phase 3 — INBOUND MCP OAuth) ────
+    # Holds DCR registrations, pending auth codes, and issued
+    # access/refresh tokens for the orchid-mcp gateway.  Shared
+    # across replicas so multi-instance gateway deployments don't
+    # reinvent their own state.
+    mcp_gateway_state_store_class: str = (
+        "orchid_ai.persistence.mcp_gateway_state_sqlite.OrchidSQLiteMCPGatewayStateStore"
+    )
+    mcp_gateway_state_store_dsn: str = "~/.orchid/chats.db"
+    # Shared service token — downstream gateways (orchid-mcp) must
+    # present this on every ``/mcp-gateway/state/*`` request.  Empty
+    # string disables the endpoints entirely (returns 503 at the
+    # router) — the safe posture when no token is configured.
+    mcp_gateway_state_service_token: str = ""
 
     # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
     # Built-in types: "memory" (default, single-instance).  Swap for a
