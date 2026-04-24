@@ -110,6 +110,19 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     else:
         app_ctx.auth_config_provider = None
 
+    # ── Auth-exchange client (optional — Phase 2 code exchange proxy) ──
+    # When wired, ``POST /auth/exchange-code`` delegates to this client,
+    # which holds the upstream ``client_secret`` and performs the
+    # authorization-code exchange against the IdP.  Downstream OAuth
+    # clients (MCP gateway, frontends) can then run as public PKCE
+    # clients and drop their own copy of ``client_secret``.
+    if s.auth_exchange_client_class:
+        exchange_cls = import_class(s.auth_exchange_client_class)
+        app_ctx.auth_exchange_client = exchange_cls()
+        logger.info("[API] Auth exchange client: %s", s.auth_exchange_client_class)
+    else:
+        app_ctx.auth_exchange_client = None
+
     # ── Build the framework via the mandatory ``Orchid`` facade ──
     # orchid-api applies YAML → env at module import time (settings.py),
     # so ``apply_yaml=False`` prevents a double-application; every knob
