@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     # block so downstream OAuth clients (MCP gateway, frontends) can
     # auto-configure instead of duplicating endpoint/client_id env vars.
     auth_config_provider_class: str = ""
+    # Dotted path to an OrchidAuthExchangeClient subclass.  When set,
+    # orchid-api exposes ``POST /auth/exchange-code`` and handles the
+    # secret-bearing upstream-OAuth exchange on behalf of downstream
+    # OAuth clients.  Lets the MCP gateway and Next.js frontends run
+    # as public PKCE-only clients without holding ``client_secret``
+    # themselves.  Phase 2 boundary in the auth-centralisation roadmap.
+    auth_exchange_client_class: str = ""
     # Name of the env var that holds the PUBLIC upstream-OAuth
     # ``client_id``.  The provider reads the env var named here at
     # runtime.  A level of indirection so ``orchid.yml`` can be checked

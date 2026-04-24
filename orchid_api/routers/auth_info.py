@@ -52,6 +52,11 @@ class AuthInfoOAuth(BaseModel):
     # :class:`orchid_ai.OrchidUpstreamOAuthConfig` for semantics.
     userinfo_sub_path: str | None = None
     userinfo_email_path: str | None = None
+    # When True, downstream OAuth clients should POST the upstream
+    # authorization code to orchid-api's ``/auth/exchange-code``
+    # instead of exchanging directly with the IdP — the
+    # ``client_secret`` lives only on orchid-api (Phase 2 boundary).
+    exchange_via_api: bool = False
 
 
 class AuthInfoResponse(BaseModel):
@@ -97,6 +102,11 @@ async def get_auth_info(settings: Settings = Depends(get_settings)) -> AuthInfoR
                 auth_domain=resolved.auth_domain,
                 userinfo_sub_path=resolved.userinfo_sub_path,
                 userinfo_email_path=resolved.userinfo_email_path,
+                # Advertise server-side exchange only when a client
+                # is actually wired — otherwise the flag lies about
+                # orchid-api's real capabilities and downstream
+                # clients would hit a 503 on ``/auth/exchange-code``.
+                exchange_via_api=(resolved.exchange_via_api and app_ctx.auth_exchange_client is not None),
             )
     return AuthInfoResponse(
         dev_bypass=settings.dev_auth_bypass,

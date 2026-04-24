@@ -47,16 +47,19 @@ class _FixedProvider(OrchidAuthConfigProvider):
 
 @pytest.fixture
 def reset_app_ctx():
-    """Snapshot + restore ``identity_resolver`` and ``auth_config_provider``
-    on ``app_ctx`` so tests don't leak state into each other.
+    """Snapshot + restore ``identity_resolver``, ``auth_config_provider``
+    and ``auth_exchange_client`` on ``app_ctx`` so tests don't leak
+    state into each other.
     """
     original_resolver = app_ctx.identity_resolver
     original_provider = app_ctx.auth_config_provider
+    original_exchange = app_ctx.auth_exchange_client
     try:
         yield
     finally:
         app_ctx.identity_resolver = original_resolver
         app_ctx.auth_config_provider = original_provider
+        app_ctx.auth_exchange_client = original_exchange
 
 
 class TestAuthInfoEndpoint:
@@ -185,6 +188,83 @@ class TestAuthInfoEndpoint:
         assert result.oauth is not None
         assert result.oauth.userinfo_sub_path == "data.user_id"
         assert result.oauth.userinfo_email_path == "data.email"
+
+    @pytest.mark.asyncio
+    async def test_exchange_via_api_true_only_when_client_wired(self, reset_app_ctx):
+        """``exchange_via_api=True`` in discovery means "orchid-api will
+        handle the code exchange".  That claim must be backed by a real
+        :class:`OrchidAuthExchangeClient` in ``app_ctx`` — otherwise
+        downstream clients would POST to ``/auth/exchange-code`` and hit
+        a 503 surprise.
+        """
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        # Provider claims the feature, but no exchange client is wired:
+        app_ctx.auth_exchange_client = None
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                exchange_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.exchange_via_api is False  # gated off
+
+    @pytest.mark.asyncio
+    async def test_exchange_via_api_true_when_both_wired(self, reset_app_ctx):
+        """With a client wired AND the provider opting in, the flag flows
+        through to downstream clients.
+        """
+
+        class _StubExchange:
+            async def exchange_code(self, **_kw):  # pragma: no cover (unused)
+                raise NotImplementedError
+
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_exchange_client = _StubExchange()  # type: ignore[assignment]
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                exchange_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.exchange_via_api is True
+
+    @pytest.mark.asyncio
+    async def test_exchange_via_api_false_when_provider_opts_out(self, reset_app_ctx):
+        """Even with a wired exchange client, a provider can set
+        ``exchange_via_api=False`` to keep Phase 1 behaviour.
+        """
+
+        class _StubExchange:
+            async def exchange_code(self, **_kw):  # pragma: no cover (unused)
+                raise NotImplementedError
+
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_exchange_client = _StubExchange()  # type: ignore[assignment]
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                exchange_via_api=False,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.exchange_via_api is False
 
     @pytest.mark.asyncio
     async def test_oauth_block_preserves_none_userinfo_endpoint(self, reset_app_ctx):
