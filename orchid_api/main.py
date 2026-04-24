@@ -23,7 +23,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .lifecycle import setup_orchid, teardown_orchid
-from .routers import chats, legacy, messages, mcp_auth, resume, sharing, streaming
+from .routers import (
+    auth_info,
+    chats,
+    legacy,
+    mcp_auth,
+    mcp_gateway,
+    messages,
+    resume,
+    sharing,
+    streaming,
+)
 from .settings import get_settings
 
 logging.basicConfig(
@@ -74,6 +84,8 @@ app.include_router(messages.router)
 app.include_router(resume.router)
 app.include_router(sharing.router)
 app.include_router(mcp_auth.router)
+app.include_router(mcp_gateway.router)
+app.include_router(auth_info.router)
 app.include_router(streaming.router)
 app.include_router(legacy.router)
 

@@ -98,8 +98,27 @@ Dockerfiles live in consumer projects (each integrator ships their own), not her
 | GET | `/mcp/auth/servers/{name}/authorize` | mcp_auth | Generate OAuth authorization URL |
 | GET | `/mcp/auth/callback` | mcp_auth | OAuth IdP redirect callback |
 | DELETE | `/mcp/auth/servers/{name}/token` | mcp_auth | Revoke stored OAuth token |
+| GET | `/mcp-gateway/config` | mcp_gateway | Resolved MCP-gateway exposure config (tool overrides + prompts) |
 | POST | `/chat` | legacy | Single-shot (no persistence) |
 | GET | `/health` | main | Readiness check |
+
+## MCP gateway exposure config
+
+``/mcp-gateway/config`` serves an :class:`OrchidMCPGatewayConfig` (tool
+title/description overrides + MCP Prompts) consumed by any MCP-facing
+gateway (e.g. ``orchid-mcp``) at session init.  Resolution precedence:
+
+1. Env vars (highest): ``ORCHID_MCP_GATEWAY_TOOL_<NAME>_(TITLE|DESCRIPTION)``
+   and ``ORCHID_MCP_GATEWAY_PROMPTS_FILE`` (path to a YAML file — replaces
+   the YAML ``mcp_gateway.prompts`` list rather than merging).
+2. ``agents.yaml`` / programmatic ``OrchidAgentsConfig.mcp_gateway``.
+3. Empty defaults (feature is **optional** — no block / no env vars →
+   gateway shows built-in tool titles + no prompts).
+
+The endpoint goes through the standard ``get_auth_context`` dependency,
+so ``DEV_AUTH_BYPASS=true`` lets unauthenticated callers fetch it for
+local dev; production requires a valid Bearer.  See
+``orchid_api/mcp_gateway.py`` for the resolver.
 
 ## Code Style
 
