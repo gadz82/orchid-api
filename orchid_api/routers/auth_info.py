@@ -75,7 +75,7 @@ class AuthInfoOAuth(BaseModel):
     client_id: str
     userinfo_endpoint: str | None = None
     scope: str = ""
-    # Platform domain (e.g. ``mytenant.docebosaas.com``) that
+    # Platform domain (e.g. ``mytenant.example.com``) that
     # downstream consumers should attach as ``X-Auth-Domain`` on
     # upstream requests.  Distinct from the user's email domain —
     # see :class:`orchid_ai.OrchidUpstreamOAuthConfig` for semantics.

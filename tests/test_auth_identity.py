@@ -77,27 +77,27 @@ class TestResolveIdentityEndpoint:
                 access_token="tok-xyz",
                 tenant_key="195128",
                 user_id="u-42",
-                extra={"domain": "acme.docebosaas.com", "email": "a@b.c", "foo": "bar"},
+                extra={"domain": "acme.example.com", "email": "a@b.c", "foo": "bar"},
             ),
         )
         app_ctx.identity_resolver = stub
 
         result = await resolve_identity(
-            ResolveIdentityRequest(access_token="tok-xyz", auth_domain="acme.docebosaas.com"),
+            ResolveIdentityRequest(access_token="tok-xyz", auth_domain="acme.example.com"),
             settings=Settings(),
         )
 
         assert isinstance(result, ResolveIdentityResponse)
         assert result.subject == "u-42"
         assert result.bearer == "tok-xyz"
-        assert result.auth_domain == "acme.docebosaas.com"
+        assert result.auth_domain == "acme.example.com"
         assert result.email == "a@b.c"
         # Unknown extras round-trip verbatim so platform-specific
         # resolvers can surface additional claims.
         assert result.extra == {"foo": "bar"}
         # Resolver received the caller-specified domain, not the
         # operator-level default.
-        assert stub.calls == [("acme.docebosaas.com", "tok-xyz")]
+        assert stub.calls == [("acme.example.com", "tok-xyz")]
 
     @pytest.mark.asyncio
     async def test_omits_auth_domain_falls_back_to_settings(self, reset_identity_resolver):
@@ -116,10 +116,10 @@ class TestResolveIdentityEndpoint:
 
     @pytest.mark.asyncio
     async def test_prefers_subclass_domain_over_request_hint(self, reset_identity_resolver):
-        """A platform-specific auth-context subclass (e.g.
-        :class:`DoceboAuthContext`) carries the domain as a top-level
-        attribute.  That wins over the caller's hint — the resolver
-        knows which tenant the token actually belongs to.
+        """A platform-specific :class:`OrchidAuthContext` subclass carries
+        the domain as a top-level attribute.  That wins over the caller's
+        hint — the resolver knows which tenant the token actually belongs
+        to.
         """
 
         class _SubCtx(OrchidAuthContext):

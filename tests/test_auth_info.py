@@ -166,7 +166,7 @@ class TestAuthInfoEndpoint:
     async def test_oauth_block_passes_through_json_path_hints(self, reset_app_ctx):
         """Non-OIDC upstreams include ``userinfo_sub_path`` / ``..._email_path``
         so downstream OAuth clients can pluck claims from wrapped shapes
-        (e.g. Docebo's ``{"data": {"user_id", "email"}}``).
+        (e.g. ``{"data": {"user_id", "email"}}``).
         """
         settings = Settings(dev_auth_bypass=False)
         app_ctx.identity_resolver = None

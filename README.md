@@ -349,7 +349,7 @@ Example:
 mcp_gateway:
   tools:
     orchid_ask:
-      title: "Ask the Docebo AI"
+      title: "Ask the Acme Knowledge Base"
   prompts:
     - name: compliance_report
       description: "Generate a compliance-completion report."
@@ -360,7 +360,7 @@ mcp_gateway:
 
 ```bash
 # Override a title without touching the YAML:
-ORCHID_MCP_GATEWAY_TOOL_ORCHID_ASK_TITLE="Ask the Docebo AI"
+ORCHID_MCP_GATEWAY_TOOL_ORCHID_ASK_TITLE="Ask the Acme Knowledge Base"
 # Point at an external prompts file:
 ORCHID_MCP_GATEWAY_PROMPTS_FILE=/etc/orchid/prompts.yml
 ```
