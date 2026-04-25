@@ -1,26 +1,33 @@
-"""``POST /auth/exchange-code`` — secret-bearing proxy for the
-upstream-OAuth authorization-code exchange.
+"""``POST /auth/exchange-code`` + ``POST /auth/refresh-token`` —
+secret-bearing proxies for the upstream-OAuth authorization-code
+and refresh-token grant types.
 
-Rationale (Phase 2 boundary).  Downstream OAuth clients (the MCP
-gateway and Next.js frontends) used to hold their own copy of
-``client_secret`` so they could exchange authorization codes with
-the upstream IdP directly.  That scatters the secret across three
-places.  Centralising the exchange here means the secret exists in
+Rationale (Phase 2 + Phase 4 boundaries).  Downstream OAuth clients
+(the MCP gateway and Next.js frontends) used to hold their own
+copy of ``client_secret`` so they could exchange authorization
+codes (Phase 1) and refresh tokens (pre-Phase-4) with the upstream
+IdP directly.  That scattered the secret across three places.
+Centralising both grant types here means the secret exists in
 exactly one process (orchid-api), and every other component runs as
 a public PKCE client.
 
-The endpoint is deliberately **unauthenticated** — its protection
-relies on the natural guard already present in the OAuth dance:
+The endpoints are deliberately **unauthenticated** — their
+protection relies on the natural guards already present in the
+OAuth grant types:
 
-1. The ``code`` is single-use and time-limited at the upstream;
-2. PKCE binds the code to a verifier the attacker cannot guess;
-3. The upstream itself will reject a ``code`` that was not issued
-   for our ``client_id`` / ``redirect_uri``.
+1. For the code grant: the ``code`` is single-use and time-limited
+   at the upstream; PKCE binds the code to a verifier the attacker
+   cannot guess; the upstream itself will reject a ``code`` that
+   was not issued for our ``client_id`` / ``redirect_uri``.
+2. For the refresh grant: the ``refresh_token`` is itself the
+   bearer-style credential; presenting it is authentication.
+   Upstreams rotate it on every refresh (OAuth 2.1), so a stolen
+   token is useful for at most one refresh cycle.
 
 A malicious caller who can construct a valid ``(code, verifier)``
-pair has already compromised the user's browser and could have
-completed the flow themselves; routing through orchid-api adds no
-new surface.  If you want defence-in-depth (e.g. rate limiting,
+or hold a valid ``refresh_token`` has already compromised the
+user's session at a deeper level; routing through orchid-api adds
+no new surface.  If you want defence-in-depth (e.g. rate limiting,
 allow-listed IPs, mTLS), wire it at the reverse proxy layer — we
 deliberately don't bake it in here because deployment topologies
 vary.
@@ -125,6 +132,87 @@ async def exchange_code(request: ExchangeCodeRequest) -> ExchangeCodeResponse:
         status = 400 if 400 <= err.status_code < 500 else 502
         logger.warning(
             "[auth-exchange] upstream rejected exchange: status=%s detail=%s",
+            err.status_code,
+            err,
+        )
+        raise HTTPException(status_code=status, detail=str(err)) from err
+    return ExchangeCodeResponse(
+        access_token=token.access_token,
+        token_type=token.token_type,
+        refresh_token=token.refresh_token,
+        expires_in=token.expires_in,
+        scope=token.scope,
+    )
+
+
+class RefreshTokenRequest(BaseModel):
+    """Body of ``POST /auth/refresh-token``.
+
+    Mirrors RFC 6749 §6 (refresh-token grant).  Downstream clients
+    stash an upstream ``refresh_token`` at
+    :meth:`exchange_code` / :meth:`refresh_token` time and post it
+    here when the paired access token expires.  orchid-api exchanges
+    it for a fresh pair using its copy of ``client_secret``.
+    """
+
+    refresh_token: str = Field(..., min_length=1, description="Upstream refresh token.")
+
+
+@router.post("/auth/refresh-token", response_model=ExchangeCodeResponse)
+async def refresh_token(request: RefreshTokenRequest) -> ExchangeCodeResponse:
+    """Proxy an upstream-OAuth refresh-token grant.
+
+    Shares :class:`ExchangeCodeResponse` with the code-exchange
+    endpoint because the upstream token response shape is
+    identical for both grant types (RFC 6749 §5.1).  Downstream
+    clients treat both endpoints as drop-in replacements for the
+    upstream ``token_endpoint``.
+
+    Raises
+    ------
+    HTTPException
+        ``503`` when no :class:`OrchidAuthExchangeClient` is wired
+        **or** when the wired client hasn't implemented
+        :meth:`refresh_token` (via :class:`NotImplementedError`).
+        ``400`` when the upstream rejected the refresh
+        (``invalid_grant`` / ``invalid_client`` / …).
+        ``502`` when the refresh failed without reaching the
+        upstream.
+    """
+    if app_ctx.auth_exchange_client is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OAuth exchange proxy is not configured.  Wire an "
+                "``OrchidAuthExchangeClient`` subclass via "
+                "``auth.auth_exchange_client_class`` in ``orchid.yml``."
+            ),
+        )
+    try:
+        token = await app_ctx.auth_exchange_client.refresh_token(
+            refresh_token=request.refresh_token,
+        )
+    except NotImplementedError as err:
+        # The wired client subclass exists but hasn't implemented
+        # the refresh grant.  503 matches the "feature unwired"
+        # semantics of the code-exchange endpoint — downstream
+        # clients treat it the same way.
+        logger.warning(
+            "[auth-exchange] refresh_token not implemented on %s",
+            type(app_ctx.auth_exchange_client).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "OAuth refresh proxy is not available — the wired "
+                "``OrchidAuthExchangeClient`` does not implement "
+                "``refresh_token``."
+            ),
+        ) from err
+    except OrchidAuthExchangeError as err:
+        status = 400 if 400 <= err.status_code < 500 else 502
+        logger.warning(
+            "[auth-exchange] upstream rejected refresh: status=%s detail=%s",
             err.status_code,
             err,
         )

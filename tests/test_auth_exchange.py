@@ -17,7 +17,9 @@ from orchid_api.context import app_ctx
 from orchid_api.routers.auth_exchange import (
     ExchangeCodeRequest,
     ExchangeCodeResponse,
+    RefreshTokenRequest,
     exchange_code,
+    refresh_token,
 )
 
 
@@ -29,10 +31,15 @@ class _StubExchange(OrchidAuthExchangeClient):
         *,
         success: OrchidUpstreamTokenResponse | None = None,
         error: OrchidAuthExchangeError | None = None,
+        refresh_success: OrchidUpstreamTokenResponse | None = None,
+        refresh_error: OrchidAuthExchangeError | None = None,
     ) -> None:
         self.success = success
         self.error = error
+        self.refresh_success = refresh_success
+        self.refresh_error = refresh_error
         self.calls: list[dict[str, str | None]] = []
+        self.refresh_calls: list[str] = []
 
     async def exchange_code(
         self,
@@ -46,6 +53,34 @@ class _StubExchange(OrchidAuthExchangeClient):
             raise self.error
         assert self.success is not None
         return self.success
+
+    async def refresh_token(
+        self,
+        *,
+        refresh_token: str,
+    ) -> OrchidUpstreamTokenResponse:
+        self.refresh_calls.append(refresh_token)
+        if self.refresh_error is not None:
+            raise self.refresh_error
+        assert self.refresh_success is not None
+        return self.refresh_success
+
+
+class _ExchangeOnlyStub(OrchidAuthExchangeClient):
+    """Subclass that overrides ONLY ``exchange_code`` — models a
+    Phase-2 client that hasn't been upgraded to Phase-4 yet.  The
+    default :meth:`refresh_token` inherits from the ABC and raises
+    :class:`NotImplementedError`.
+    """
+
+    async def exchange_code(
+        self,
+        *,
+        code: str,
+        redirect_uri: str,
+        code_verifier: str | None = None,
+    ) -> OrchidUpstreamTokenResponse:
+        return OrchidUpstreamTokenResponse(access_token="at")
 
 
 @pytest.fixture
@@ -166,3 +201,92 @@ class TestExchangeCodeRequestValidation:
     def test_rejects_empty_code(self):
         with pytest.raises(Exception):
             ExchangeCodeRequest(code="", redirect_uri="http://cb")
+
+
+# ── Phase 4: /auth/refresh-token ───────────────────────────────
+
+
+class TestRefreshTokenEndpoint:
+    @pytest.mark.asyncio
+    async def test_503_when_no_client_configured(self, reset_exchange_client):
+        app_ctx.auth_exchange_client = None
+        with pytest.raises(HTTPException) as exc:
+            await refresh_token(RefreshTokenRequest(refresh_token="rt-1"))
+        assert exc.value.status_code == 503
+        assert "not configured" in str(exc.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_503_when_client_hasnt_implemented_refresh(self, reset_exchange_client):
+        """A Phase-2 client (overrides exchange_code only) returning
+        :class:`NotImplementedError` maps to 503 so downstream can
+        distinguish "feature unavailable" from "user's token is
+        bad".
+        """
+        app_ctx.auth_exchange_client = _ExchangeOnlyStub()
+        with pytest.raises(HTTPException) as exc:
+            await refresh_token(RefreshTokenRequest(refresh_token="rt-1"))
+        assert exc.value.status_code == 503
+        assert "refresh_token" in str(exc.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_happy_path_returns_rotated_tokens(self, reset_exchange_client):
+        stub = _StubExchange(
+            refresh_success=OrchidUpstreamTokenResponse(
+                access_token="at-fresh",
+                refresh_token="rt-rotated",
+                expires_in=3600,
+                scope="api",
+            ),
+        )
+        app_ctx.auth_exchange_client = stub
+
+        result = await refresh_token(RefreshTokenRequest(refresh_token="rt-old"))
+
+        assert isinstance(result, ExchangeCodeResponse)
+        assert result.access_token == "at-fresh"
+        assert result.refresh_token == "rt-rotated"
+        assert result.expires_in == 3600
+        assert result.scope == "api"
+        assert stub.refresh_calls == ["rt-old"]
+
+    @pytest.mark.asyncio
+    async def test_upstream_4xx_becomes_400(self, reset_exchange_client):
+        """invalid_grant (refresh token revoked / expired) → 400 so
+        the downstream client knows to re-authenticate rather than
+        retry.
+        """
+        app_ctx.auth_exchange_client = _StubExchange(
+            refresh_error=OrchidAuthExchangeError("invalid_grant", status_code=400),
+        )
+        with pytest.raises(HTTPException) as exc:
+            await refresh_token(RefreshTokenRequest(refresh_token="rt-revoked"))
+        assert exc.value.status_code == 400
+        assert "invalid_grant" in str(exc.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_upstream_5xx_becomes_502(self, reset_exchange_client):
+        app_ctx.auth_exchange_client = _StubExchange(
+            refresh_error=OrchidAuthExchangeError("IdP down", status_code=503),
+        )
+        with pytest.raises(HTTPException) as exc:
+            await refresh_token(RefreshTokenRequest(refresh_token="rt-1"))
+        assert exc.value.status_code == 502
+
+    @pytest.mark.asyncio
+    async def test_unreachable_upstream_becomes_502(self, reset_exchange_client):
+        app_ctx.auth_exchange_client = _StubExchange(
+            refresh_error=OrchidAuthExchangeError("connection refused"),
+        )
+        with pytest.raises(HTTPException) as exc:
+            await refresh_token(RefreshTokenRequest(refresh_token="rt-1"))
+        assert exc.value.status_code == 502
+
+
+class TestRefreshTokenRequestValidation:
+    def test_requires_refresh_token(self):
+        with pytest.raises(Exception):
+            RefreshTokenRequest()  # type: ignore[call-arg]
+
+    def test_rejects_empty_refresh_token(self):
+        with pytest.raises(Exception):
+            RefreshTokenRequest(refresh_token="")
