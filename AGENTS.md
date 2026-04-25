@@ -9,18 +9,27 @@
 ```
 orchid-api/
   orchid_api/
-    main.py          FastAPI app + lifespan (graph build, storage init, tracing)
+    main.py          FastAPI app + lifespan + router include + plugin discovery
     settings.py      Pydantic BaseSettings + YAML overlay via _apply_yaml_config()
     context.py       AppContext dataclass (singleton, populated at startup)
     auth.py          Bearer token -> OrchidAuthContext via pluggable OrchidIdentityResolver (ADR-010)
-    models.py        Pydantic response models
+    models.py        Pydantic response models (incl. InterruptResponse)
     tracing.py       LangSmith setup
+    mcp_gateway.py   Resolves OrchidMCPGatewayConfig (env-var overrides + YAML)
+    lifecycle.py     setup_orchid / teardown_orchid for embedding in your own FastAPI
     routers/
-      chats.py       CRUD: create, list, delete chat sessions
-      messages.py    Send messages + document upload (multipart/form-data)
-      sharing.py     Promote chat RAG data to user-common scope
-      mcp_auth.py    MCP per-server OAuth: list servers, authorize, callback, revoke
-      legacy.py      Legacy single-shot /chat endpoint (JSON body)
+      chats.py               CRUD: create, list, delete chat sessions
+      messages.py            Send messages + document upload (multipart/form-data)
+      streaming.py           SSE-streamed message send (Phase 9)
+      resume.py              Resume after HITL approval pause
+      sharing.py             Promote chat RAG data to user-common scope
+      mcp_auth.py            Outbound MCP per-server OAuth: list/authorize/callback/revoke
+      mcp_gateway.py         /mcp-gateway/config — gateway exposure overrides
+      auth_info.py           /auth-info — public posture + upstream-OAuth discovery (Phase 1)
+      auth_exchange.py       /auth/exchange-code + /auth/refresh-token (Phases 2 + 4B)
+      auth_identity.py       /auth/resolve-identity — identity bridge (Phase 4A)
+      mcp_gateway_state.py   /mcp-gateway/state/* — Phase 3 multi-replica gateway state
+      legacy.py              Legacy single-shot /chat endpoint (JSON body)
   pyproject.toml
 ```
 
@@ -54,24 +63,12 @@ orchid-api/
 
 ## Configuration (Settings)
 
-All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CONFIG`:
+All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CONFIG`. The full matrix is in `README.md`; the high-level groups are:
 
-| Setting | Default | Purpose |
-|---------|---------|---------|
-| `LITELLM_MODEL` | `ollama/llama3.2` | LLM model identifier |
-| `AGENTS_CONFIG_PATH` | `agents.yaml` | Path to agent YAML config |
-| `VECTOR_BACKEND` | `qdrant` | Vector store backend |
-| `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage` | Storage backend class |
-| `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
-| `CHAT_EXTRA_MIGRATIONS_PACKAGE` | `""` | Dotted import path of integrator migrations applied after the framework's (see `orchid_ai/persistence/AGENTS.md`) |
-| `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
-| `IDENTITY_RESOLVER_CLASS` | `""` | Dotted path to OrchidIdentityResolver |
-| `STARTUP_HOOK` | `""` | Async function called at startup |
-| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore` | MCP OAuth token store class |
-| `MCP_TOKEN_STORE_DSN` | `~/.orchid/mcp_tokens.db` | Token store connection string |
-| `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
+- **Core** — `LITELLM_MODEL`, `AGENTS_CONFIG_PATH`, `VECTOR_BACKEND`, `QDRANT_URL`, `EMBEDDING_MODEL`, `CHAT_STORAGE_CLASS`, `CHAT_DB_DSN`, `CHAT_EXTRA_MIGRATIONS_PACKAGE`, `STARTUP_HOOK`, `API_BASE_URL`, `LANGSMITH_*`.
+- **Auth (consumer-pluggable)** — `IDENTITY_RESOLVER_CLASS` (Phase 4A — also powers `/auth/resolve-identity`), `AUTH_DOMAIN`, `AUTH_CONFIG_PROVIDER_CLASS` (Phase 1), `AUTH_EXCHANGE_CLIENT_CLASS` (Phases 2 + 4B), `AUTH_OAUTH_CLIENT_ID_ENV`, `AUTH_OAUTH_SCOPE`, `DEV_AUTH_BYPASS`.
+- **Outbound MCP** — `MCP_TOKEN_STORE_CLASS`, `MCP_TOKEN_STORE_DSN`, `MCP_CLIENT_REGISTRATION_STORE_CLASS`, `MCP_CLIENT_REGISTRATION_STORE_DSN`, `OAUTH_STATE_STORE_CLASS`, `OAUTH_STATE_TTL_SECONDS`.
+- **Inbound gateway state (Phase 3)** — `MCP_GATEWAY_STATE_STORE_CLASS`, `MCP_GATEWAY_STATE_STORE_DSN`, `MCP_GATEWAY_STATE_SERVICE_TOKEN` (empty disables `/mcp-gateway/state/*`).
 
 ## Running
 
@@ -85,6 +82,8 @@ Dockerfiles live in consumer projects (each integrator ships their own), not her
 
 ## Endpoints
 
+Chat / messages:
+
 | Method | Path | Router | Purpose |
 |--------|------|--------|---------|
 | POST | `/chats` | chats | Create chat session |
@@ -92,15 +91,50 @@ Dockerfiles live in consumer projects (each integrator ships their own), not her
 | DELETE | `/chats/{id}` | chats | Delete chat |
 | GET | `/chats/{id}/messages` | messages | Load chat history |
 | POST | `/chats/{id}/messages` | messages | Send message (multipart) |
+| POST | `/chats/{id}/messages/stream` | streaming | SSE-streamed message send |
 | POST | `/chats/{id}/upload` | messages | Upload documents for chat RAG |
+| POST | `/chats/{id}/resume` | resume | Resume after a HITL approval pause |
 | POST | `/chats/{id}/share` | sharing | Promote chat RAG to user scope |
+| POST | `/chat` | legacy | Single-shot (no persistence) |
+| GET | `/health` | main | Readiness check |
+
+Outbound MCP OAuth (per-user external-server tokens):
+
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
 | GET | `/mcp/auth/servers` | mcp_auth | List OAuth servers + user auth status |
 | GET | `/mcp/auth/servers/{name}/authorize` | mcp_auth | Generate OAuth authorization URL |
 | GET | `/mcp/auth/callback` | mcp_auth | OAuth IdP redirect callback |
 | DELETE | `/mcp/auth/servers/{name}/token` | mcp_auth | Revoke stored OAuth token |
+
+Inbound auth centralisation (Phases 1–5 — see [.knowledge/auth-centralisation.md](../.knowledge/auth-centralisation.md)):
+
+| Method | Path | Router | Phase | Purpose |
+|--------|------|--------|-------|---------|
+| GET | `/auth-info` | auth_info | 1 | Public posture + upstream-OAuth discovery |
+| POST | `/auth/exchange-code` | auth_exchange | 2 | Server-side authorization-code exchange |
+| POST | `/auth/refresh-token` | auth_exchange | 4B | Server-side refresh-token exchange |
+| POST | `/auth/resolve-identity` | auth_identity | 4A | Upstream token → `OrchidAuthContext` |
+
+Inbound MCP gateway state (Phase 3, gated by `MCP_GATEWAY_STATE_SERVICE_TOKEN`):
+
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
+| POST | `/mcp-gateway/state/clients` | mcp_gateway_state | Register a DCR client |
+| GET | `/mcp-gateway/state/clients/{client_id}` | mcp_gateway_state | Fetch a registered client |
+| POST | `/mcp-gateway/state/auth-codes` | mcp_gateway_state | Insert an auth-code record |
+| POST | `/mcp-gateway/state/auth-codes/lookup-by-upstream-state` | mcp_gateway_state | Correlate via upstream `state` echo |
+| PATCH | `/mcp-gateway/state/auth-codes/{code}` | mcp_gateway_state | Patch identity / IdP tokens |
+| POST | `/mcp-gateway/state/auth-codes/{code}/consume` | mcp_gateway_state | Atomic one-shot consume |
+| POST | `/mcp-gateway/state/tokens` | mcp_gateway_state | Issue gateway access + refresh pair |
+| POST | `/mcp-gateway/state/tokens/introspect` | mcp_gateway_state | Look up by access xor refresh |
+| DELETE | `/mcp-gateway/state/tokens/{access_token}` | mcp_gateway_state | Revoke |
+
+Gateway exposure config:
+
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
 | GET | `/mcp-gateway/config` | mcp_gateway | Resolved MCP-gateway exposure config (tool overrides + prompts) |
-| POST | `/chat` | legacy | Single-shot (no persistence) |
-| GET | `/health` | main | Readiness check |
 
 ## MCP gateway exposure config
 

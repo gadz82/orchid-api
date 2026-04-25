@@ -26,10 +26,42 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from orchid_ai.core.auth_config import (
+    OrchidAuthExchangeClient,
+    OrchidUpstreamOAuthConfig,
+)
+
 from ..context import app_ctx
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["auth-info"])
+
+
+def _refresh_via_api_available(resolved: OrchidUpstreamOAuthConfig) -> bool:
+    """Advertise ``refresh_via_api`` only when the plumbing actually
+    works end-to-end.
+
+    The check has three layers:
+
+    1. Provider opt-in (``resolved.refresh_via_api``) — operator has
+       to explicitly enable the feature in ``orchid.yml``.
+    2. Exchange client wired — the router holds a concrete
+       :class:`OrchidAuthExchangeClient` instance.
+    3. Client overrides ``refresh_token`` — the default method on
+       the ABC raises :class:`NotImplementedError`, so comparing the
+       method identity against the ABC's guarantees we only advertise
+       the feature when a real implementation exists.
+
+    Skipping (3) would make the ``/auth-info`` output lie when an
+    operator wires an exchange client written pre-Phase-4: the flag
+    would be ``true`` but ``/auth/refresh-token`` would 503.
+    """
+    if not resolved.refresh_via_api:
+        return False
+    client = app_ctx.auth_exchange_client
+    if client is None:
+        return False
+    return type(client).refresh_token is not OrchidAuthExchangeClient.refresh_token
 
 
 class AuthInfoOAuth(BaseModel):
@@ -57,6 +89,21 @@ class AuthInfoOAuth(BaseModel):
     # instead of exchanging directly with the IdP — the
     # ``client_secret`` lives only on orchid-api (Phase 2 boundary).
     exchange_via_api: bool = False
+    # When True, downstream OAuth clients should POST the upstream
+    # access token to orchid-api's ``/auth/resolve-identity`` instead
+    # of hitting the upstream ``userinfo_endpoint`` themselves.  The
+    # gateway then drops its own ``userinfo_endpoint`` + JSON-path
+    # hint configuration — orchid-api's already-wired identity
+    # resolver does the work (Phase 4 boundary).
+    resolve_via_api: bool = False
+    # When True, orchid-api exposes ``POST /auth/refresh-token`` as
+    # the refresh-grant equivalent of ``/auth/exchange-code``.  The
+    # downstream consumer presents its upstream ``refresh_token`` and
+    # orchid-api performs the upstream exchange with the
+    # ``client_secret`` it holds.  Phase 4 complement to
+    # :attr:`exchange_via_api` — when both are enabled the downstream
+    # gateway never hits the upstream ``token_endpoint`` directly.
+    refresh_via_api: bool = False
 
 
 class AuthInfoResponse(BaseModel):
@@ -107,6 +154,22 @@ async def get_auth_info(settings: Settings = Depends(get_settings)) -> AuthInfoR
                 # orchid-api's real capabilities and downstream
                 # clients would hit a 503 on ``/auth/exchange-code``.
                 exchange_via_api=(resolved.exchange_via_api and app_ctx.auth_exchange_client is not None),
+                # Same gating logic: advertise the
+                # ``/auth/resolve-identity`` endpoint only when an
+                # :class:`OrchidIdentityResolver` is wired.  A bare
+                # dev-bypass deployment has no resolver, so the
+                # endpoint would 503.
+                resolve_via_api=(resolved.resolve_via_api and app_ctx.identity_resolver is not None),
+                # Phase 4 refresh flag gates on **three** conditions:
+                # provider opted in, exchange client wired, AND the
+                # wired client's class actually overrides
+                # ``refresh_token``.  Without the third check we'd
+                # advertise a feature that 503s mid-request — the
+                # default ABC implementation raises
+                # NotImplementedError.  We inspect the class method
+                # identity rather than calling it so a 'feature
+                # probe' never hits the upstream IdP.
+                refresh_via_api=_refresh_via_api_available(resolved),
             )
     return AuthInfoResponse(
         dev_bypass=settings.dev_auth_bypass,

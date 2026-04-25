@@ -202,6 +202,12 @@ class GatewayTokenDTO(BaseModel):
     identity: dict[str, Any]
     scopes: list[str]
     expires_at: float
+    # Phase 4 upstream-token columns — see core dataclass.  Defaults
+    # keep the DTO backwards-compatible with downstream gateways
+    # that haven't rolled their zod schema forward yet.
+    idp_access_token: str = ""
+    idp_refresh_token: str = ""
+    idp_expires_at: float = 0.0
 
     def to_record(self) -> OrchidMCPGatewayToken:
         return OrchidMCPGatewayToken(
@@ -212,6 +218,9 @@ class GatewayTokenDTO(BaseModel):
             identity=dict(self.identity),
             scopes=list(self.scopes),
             expires_at=self.expires_at,
+            idp_access_token=self.idp_access_token,
+            idp_refresh_token=self.idp_refresh_token,
+            idp_expires_at=self.idp_expires_at,
         )
 
     @classmethod
@@ -224,6 +233,9 @@ class GatewayTokenDTO(BaseModel):
             identity=dict(record.identity),
             scopes=list(record.scopes),
             expires_at=record.expires_at,
+            idp_access_token=record.idp_access_token,
+            idp_refresh_token=record.idp_refresh_token,
+            idp_expires_at=record.idp_expires_at,
         )
 
 

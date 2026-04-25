@@ -289,6 +289,162 @@ class TestAuthInfoEndpoint:
         assert result.oauth.scope == ""
 
     @pytest.mark.asyncio
+    async def test_resolve_via_api_true_only_when_resolver_wired(self, reset_app_ctx):
+        """Phase 4 parallel of ``exchange_via_api``: the provider
+        claims the feature, but without an :class:`OrchidIdentityResolver`
+        the ``/auth/resolve-identity`` endpoint would 503.  Gate the
+        flag off in that case so downstream doesn't get a surprise.
+        """
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                resolve_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.resolve_via_api is False  # gated off
+
+    @pytest.mark.asyncio
+    async def test_resolve_via_api_true_when_both_wired(self, reset_app_ctx):
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = DummyResolver()  # type: ignore[assignment]
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                resolve_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.resolve_via_api is True
+
+    @pytest.mark.asyncio
+    async def test_refresh_via_api_false_when_no_exchange_client(self, reset_app_ctx):
+        """Provider claims ``refresh_via_api=true`` but no client is
+        wired — gate off so downstream doesn't get a 503 surprise.
+        """
+        from orchid_ai.core.auth_config import (
+            OrchidAuthExchangeClient,
+            OrchidUpstreamTokenResponse,
+        )
+
+        class _StubExchange(OrchidAuthExchangeClient):
+            async def exchange_code(self, **_kw) -> OrchidUpstreamTokenResponse:  # type: ignore[override]
+                raise NotImplementedError  # pragma: no cover
+
+            async def refresh_token(self, **_kw) -> OrchidUpstreamTokenResponse:  # type: ignore[override]
+                raise NotImplementedError  # pragma: no cover
+
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_exchange_client = None
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                refresh_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.refresh_via_api is False
+
+    @pytest.mark.asyncio
+    async def test_refresh_via_api_false_when_client_lacks_refresh_impl(self, reset_app_ctx):
+        """Exchange client is wired but its class inherits the default
+        :meth:`OrchidAuthExchangeClient.refresh_token` (raises
+        :class:`NotImplementedError`).  Gate off — advertising the
+        feature would lie about orchid-api's real capabilities.
+        """
+        from orchid_ai.core.auth_config import (
+            OrchidAuthExchangeClient,
+            OrchidUpstreamTokenResponse,
+        )
+
+        class _ExchangeOnly(OrchidAuthExchangeClient):
+            async def exchange_code(self, **_kw) -> OrchidUpstreamTokenResponse:  # type: ignore[override]
+                raise NotImplementedError  # pragma: no cover
+
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_exchange_client = _ExchangeOnly()
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                refresh_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.refresh_via_api is False  # gated off by method-identity check
+
+    @pytest.mark.asyncio
+    async def test_refresh_via_api_true_when_fully_wired(self, reset_app_ctx):
+        """All three conditions met — provider opts in, client is
+        wired, and the client actually overrides :meth:`refresh_token`.
+        """
+        from orchid_ai.core.auth_config import (
+            OrchidAuthExchangeClient,
+            OrchidUpstreamTokenResponse,
+        )
+
+        class _FullExchange(OrchidAuthExchangeClient):
+            async def exchange_code(self, **_kw) -> OrchidUpstreamTokenResponse:  # type: ignore[override]
+                raise NotImplementedError  # pragma: no cover
+
+            async def refresh_token(self, **_kw) -> OrchidUpstreamTokenResponse:  # type: ignore[override]
+                raise NotImplementedError  # pragma: no cover
+
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = None
+        app_ctx.auth_exchange_client = _FullExchange()
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                refresh_via_api=True,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.refresh_via_api is True
+
+    @pytest.mark.asyncio
+    async def test_resolve_via_api_false_when_provider_opts_out(self, reset_app_ctx):
+        """Operator can keep the Phase-1 userinfo-from-gateway path
+        even with a resolver wired — useful during staged rollouts."""
+        settings = Settings(dev_auth_bypass=False)
+        app_ctx.identity_resolver = DummyResolver()  # type: ignore[assignment]
+        app_ctx.auth_config_provider = _FixedProvider(
+            OrchidUpstreamOAuthConfig(
+                issuer_url="https://acme.example.com",
+                authorization_endpoint="https://acme.example.com/authorize",
+                token_endpoint="https://acme.example.com/token",
+                client_id="c",
+                resolve_via_api=False,
+            ),
+        )
+        result = await get_auth_info(settings=settings)
+        assert result.oauth is not None
+        assert result.oauth.resolve_via_api is False
+
+    @pytest.mark.asyncio
     async def test_no_auth_required_on_endpoint(self):
         """Endpoint must be unauthenticated — no ``get_auth_context`` dep."""
         import inspect

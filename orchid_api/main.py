@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .lifecycle import setup_orchid, teardown_orchid
 from .routers import (
     auth_exchange,
+    auth_identity,
     auth_info,
     chats,
     legacy,
@@ -90,6 +91,7 @@ app.include_router(mcp_gateway.router)
 app.include_router(mcp_gateway_state.router)
 app.include_router(auth_info.router)
 app.include_router(auth_exchange.router)
+app.include_router(auth_identity.router)
 app.include_router(streaming.router)
 app.include_router(legacy.router)
 
