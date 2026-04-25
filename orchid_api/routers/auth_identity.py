@@ -4,12 +4,13 @@ upstream identity bridge.
 Rationale (Phase 4 boundary).  In Phase 1 / 2 / 3 the MCP gateway
 still held one piece of upstream config the rest of orchid-api
 didn't: the userinfo endpoint URL + JSON-path hints for non-OIDC
-shapes (e.g. Docebo's ``data.user_id``).  Whenever a user completed
-the OAuth dance the gateway hit the upstream ``userinfo_endpoint``
-itself to build an :type:`OrchidIdentity`.  That split the
-identity-extraction logic across the gateway and any custom
-scripted resolver the operator wrote, and required the gateway to
-know tenant-shape details the rest of the stack already knew.
+shapes (e.g. wrapped ``data.user_id`` payloads).  Whenever a user
+completed the OAuth dance the gateway hit the upstream
+``userinfo_endpoint`` itself to build an :type:`OrchidIdentity`.
+That split the identity-extraction logic across the gateway and
+any custom scripted resolver the operator wrote, and required the
+gateway to know tenant-shape details the rest of the stack already
+knew.
 
 Phase 4 exposes the existing :class:`OrchidIdentityResolver`
 (already wired into :attr:`AppContext.identity_resolver`) over an
@@ -154,9 +155,9 @@ async def resolve_identity(
     extra = dict(auth_ctx.extra) if auth_ctx.extra else {}
     email = str(extra.pop("email", "")) if "email" in extra else ""
     # Prefer the resolver-provided domain (stored either as a top-level
-    # subclass attribute like :class:`DoceboAuthContext.domain` or
-    # under ``extra['domain']``) and fall back to the caller's hint so
-    # a resolver that doesn't carry the field still round-trips it.
+    # subclass attribute on a custom :class:`OrchidAuthContext` subclass,
+    # or under ``extra['domain']``) and fall back to the caller's hint
+    # so a resolver that doesn't carry the field still round-trips it.
     resolver_domain = getattr(auth_ctx, "domain", None) or extra.pop("domain", "") or domain
     return ResolveIdentityResponse(
         subject=auth_ctx.user_id,
