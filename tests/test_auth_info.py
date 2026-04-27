@@ -36,12 +36,24 @@ class DummyResolver:
 
 
 class _FixedProvider(OrchidAuthConfigProvider):
-    """Test provider that returns a pre-baked config verbatim."""
+    """Test provider that returns a pre-baked config verbatim.
+
+    The ``domain`` kwarg is accepted (matching the ABC) but ignored —
+    these tests focus on the gate / posture logic, not on multi-tenant
+    URL templating.  Multi-tenant tests live alongside the concrete
+    consumer impls (e.g. ``docebo/tests/test_auth_config.py``).
+    """
 
     def __init__(self, config: OrchidUpstreamOAuthConfig | None) -> None:
         self._config = config
+        self.calls: list[str | None] = []
 
-    def get_oauth_config(self) -> OrchidUpstreamOAuthConfig | None:
+    def get_oauth_config(
+        self,
+        *,
+        domain: str | None = None,
+    ) -> OrchidUpstreamOAuthConfig | None:
+        self.calls.append(domain)
         return self._config
 
 
@@ -446,11 +458,18 @@ class TestAuthInfoEndpoint:
 
     @pytest.mark.asyncio
     async def test_no_auth_required_on_endpoint(self):
-        """Endpoint must be unauthenticated — no ``get_auth_context`` dep."""
+        """Endpoint must be unauthenticated — no ``get_auth_context`` dep.
+
+        The endpoint accepts a ``domain`` query parameter (multi-tenant
+        per-request hint) and a ``settings`` dependency injection.
+        Neither is an auth gate, but they must be the only inputs —
+        a regression that adds e.g. an ``auth_context`` dep would
+        break the public discovery contract.
+        """
         import inspect
 
         sig = inspect.signature(get_auth_info)
         param_names = set(sig.parameters.keys())
         assert "auth" not in param_names
         assert "auth_context" not in param_names
-        assert param_names == {"settings"}
+        assert param_names == {"domain", "settings"}

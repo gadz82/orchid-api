@@ -74,6 +74,15 @@ class ExchangeCodeRequest(BaseModel):
             "MCP 2025-03-26 client)."
         ),
     )
+    auth_domain: str | None = Field(
+        None,
+        description=(
+            "Optional per-request tenant hint.  Multi-tenant deployments "
+            "(one orchid-api fronting many platform hosts) forward the "
+            "user-supplied domain so the wired exchange client can route "
+            "to the correct upstream ``token_endpoint``."
+        ),
+    )
 
 
 class ExchangeCodeResponse(BaseModel):
@@ -124,6 +133,7 @@ async def exchange_code(request: ExchangeCodeRequest) -> ExchangeCodeResponse:
             code=request.code,
             redirect_uri=request.redirect_uri,
             code_verifier=request.code_verifier,
+            domain=request.auth_domain,
         )
     except OrchidAuthExchangeError as err:
         # Map upstream failures (4xx) to 400 so downstream clients
@@ -156,6 +166,15 @@ class RefreshTokenRequest(BaseModel):
     """
 
     refresh_token: str = Field(..., min_length=1, description="Upstream refresh token.")
+    auth_domain: str | None = Field(
+        None,
+        description=(
+            "Optional per-request tenant hint — same semantics as on "
+            "``/auth/exchange-code``.  Multi-tenant deployments forward "
+            "the user-supplied platform host so refreshes route to the "
+            "correct upstream ``token_endpoint``."
+        ),
+    )
 
 
 @router.post("/auth/refresh-token", response_model=ExchangeCodeResponse)
@@ -191,6 +210,7 @@ async def refresh_token(request: RefreshTokenRequest) -> ExchangeCodeResponse:
     try:
         token = await app_ctx.auth_exchange_client.refresh_token(
             refresh_token=request.refresh_token,
+            domain=request.auth_domain,
         )
     except NotImplementedError as err:
         # The wired client subclass exists but hasn't implemented
