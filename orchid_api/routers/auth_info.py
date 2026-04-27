@@ -133,11 +133,22 @@ class AuthInfoResponse(BaseModel):
 
 
 @router.get("/auth-info", response_model=AuthInfoResponse)
-async def get_auth_info(settings: Settings = Depends(get_settings)) -> AuthInfoResponse:
-    """Return non-secret upstream auth posture + OAuth discovery."""
+async def get_auth_info(
+    domain: str | None = None,
+    settings: Settings = Depends(get_settings),
+) -> AuthInfoResponse:
+    """Return non-secret upstream auth posture + OAuth discovery.
+
+    The optional ``domain`` query parameter lets multi-tenant
+    front-ends pass the user-supplied platform host so the wired
+    :class:`OrchidAuthConfigProvider` can build tenant-scoped URLs
+    (Docebo case: each user types their own ``mycompany.docebosaas.com``).
+    Single-tenant deployments call ``/auth-info`` without it and the
+    provider returns its operator-level fixed config.
+    """
     oauth_block: AuthInfoOAuth | None = None
     if app_ctx.auth_config_provider is not None:
-        resolved = app_ctx.auth_config_provider.get_oauth_config()
+        resolved = app_ctx.auth_config_provider.get_oauth_config(domain=domain)
         if resolved is not None:
             oauth_block = AuthInfoOAuth(
                 issuer_url=resolved.issuer_url,

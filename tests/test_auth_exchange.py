@@ -39,7 +39,7 @@ class _StubExchange(OrchidAuthExchangeClient):
         self.refresh_success = refresh_success
         self.refresh_error = refresh_error
         self.calls: list[dict[str, str | None]] = []
-        self.refresh_calls: list[str] = []
+        self.refresh_calls: list[dict[str, str | None]] = []
 
     async def exchange_code(
         self,
@@ -47,8 +47,16 @@ class _StubExchange(OrchidAuthExchangeClient):
         code: str,
         redirect_uri: str,
         code_verifier: str | None = None,
+        domain: str | None = None,
     ) -> OrchidUpstreamTokenResponse:
-        self.calls.append({"code": code, "redirect_uri": redirect_uri, "code_verifier": code_verifier})
+        self.calls.append(
+            {
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "code_verifier": code_verifier,
+                "domain": domain,
+            }
+        )
         if self.error is not None:
             raise self.error
         assert self.success is not None
@@ -58,8 +66,9 @@ class _StubExchange(OrchidAuthExchangeClient):
         self,
         *,
         refresh_token: str,
+        domain: str | None = None,
     ) -> OrchidUpstreamTokenResponse:
-        self.refresh_calls.append(refresh_token)
+        self.refresh_calls.append({"refresh_token": refresh_token, "domain": domain})
         if self.refresh_error is not None:
             raise self.refresh_error
         assert self.refresh_success is not None
@@ -79,6 +88,7 @@ class _ExchangeOnlyStub(OrchidAuthExchangeClient):
         code: str,
         redirect_uri: str,
         code_verifier: str | None = None,
+        domain: str | None = None,
     ) -> OrchidUpstreamTokenResponse:
         return OrchidUpstreamTokenResponse(access_token="at")
 
@@ -132,6 +142,7 @@ class TestExchangeCodeEndpoint:
                 "code": "the-code",
                 "redirect_uri": "http://cb",
                 "code_verifier": "the-verifier",
+                "domain": None,
             }
         ]
 
@@ -247,7 +258,7 @@ class TestRefreshTokenEndpoint:
         assert result.refresh_token == "rt-rotated"
         assert result.expires_in == 3600
         assert result.scope == "api"
-        assert stub.refresh_calls == ["rt-old"]
+        assert stub.refresh_calls == [{"refresh_token": "rt-old", "domain": None}]
 
     @pytest.mark.asyncio
     async def test_upstream_4xx_becomes_400(self, reset_exchange_client):
