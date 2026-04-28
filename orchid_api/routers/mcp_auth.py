@@ -45,6 +45,7 @@ from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
 from ..context import (
+    app_ctx,
     get_mcp_client_registration_store,
     get_mcp_client_registration_store_optional,
     get_mcp_token_store,
@@ -399,6 +400,28 @@ async def oauth_callback(
             server_name,
             pending.user_id,
         )
+
+    # Warm the freshly-authorized server's capabilities so the very
+    # next chat sees them cached.  We synthesise an OrchidAuthContext
+    # carrying the user's tenant/user id and the just-issued
+    # access_token — the warmer dispatches via the per-server token
+    # store, not via this context, but a populated access_token avoids
+    # tripping any defensive checks downstream.  Failures here are
+    # advisory and never break the OAuth completion page.
+    if app_ctx.orchid is not None:
+        try:
+            resolved_auth = OrchidAuthContext(
+                access_token=record.access_token,
+                tenant_key=pending.tenant_id,
+                user_id=pending.user_id,
+            )
+            await app_ctx.orchid.session_warmer.warm_one_for_user(resolved_auth, server_name)
+        except Exception as exc:
+            logger.warning(
+                "[MCP OAuth] Post-callback warm for '%s' failed: %s",
+                server_name,
+                exc,
+            )
 
     # ``targetOrigin = "*"`` because the popup lives on the API's
     # origin (e.g. ``http://localhost:8080``) while the opener is the

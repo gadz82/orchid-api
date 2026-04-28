@@ -34,6 +34,7 @@ from .routers import (
     mcp_gateway_state,
     messages,
     resume,
+    session,
     sharing,
     streaming,
 )
@@ -92,6 +93,7 @@ app.include_router(mcp_gateway_state.router)
 app.include_router(auth_info.router)
 app.include_router(auth_exchange.router)
 app.include_router(auth_identity.router)
+app.include_router(session.router)
 app.include_router(streaming.router)
 app.include_router(legacy.router)
 

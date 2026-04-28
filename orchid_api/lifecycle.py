@@ -157,6 +157,24 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         ttl_seconds=float(s.oauth_state_ttl_seconds),
     )
 
+    # ── Proactive MCP capability warm-up ──────────────────
+    # ``auth.mode: none`` MCP servers need no user identity, so we can
+    # populate their per-server capability caches before any user
+    # authenticates.  ``passthrough`` and ``oauth`` servers wait for a
+    # user-session start (``POST /session/warm`` from the frontend, or
+    # the lazy backstop in ``get_auth_context`` on first authenticated
+    # request).  Failures here NEVER abort startup.
+    try:
+        warm_report = await app_ctx.orchid.warm_unauthenticated_capabilities()
+        logger.info(
+            "[API] MCP startup warm-up: warmed=%s, skipped=%s, failed=%s",
+            warm_report.warmed,
+            warm_report.skipped,
+            warm_report.failed,
+        )
+    except Exception as exc:
+        logger.warning("[API] MCP startup warm-up raised: %s", exc)
+
     logger.info(
         "[API] Ready — model=%s, vector_backend=%s, agents=%s",
         s.litellm_model,
