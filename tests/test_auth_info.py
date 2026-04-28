@@ -41,7 +41,7 @@ class _FixedProvider(OrchidAuthConfigProvider):
     The ``domain`` kwarg is accepted (matching the ABC) but ignored —
     these tests focus on the gate / posture logic, not on multi-tenant
     URL templating.  Multi-tenant tests live alongside the concrete
-    consumer impls (e.g. ``docebo/tests/test_auth_config.py``).
+    consumer impls in their own packages.
     """
 
     def __init__(self, config: OrchidUpstreamOAuthConfig | None) -> None:

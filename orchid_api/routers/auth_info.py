@@ -142,9 +142,11 @@ async def get_auth_info(
     The optional ``domain`` query parameter lets multi-tenant
     front-ends pass the user-supplied platform host so the wired
     :class:`OrchidAuthConfigProvider` can build tenant-scoped URLs
-    (Docebo case: each user types their own ``mycompany.docebosaas.com``).
-    Single-tenant deployments call ``/auth-info`` without it and the
-    provider returns its operator-level fixed config.
+    (e.g. each end-user types their own ``mycompany.example.com`` at
+    login and the same orchid-api routes the request to that
+    tenant's IdP).  Single-tenant deployments call ``/auth-info``
+    without it and the provider returns its operator-level fixed
+    config.
     """
     oauth_block: AuthInfoOAuth | None = None
     if app_ctx.auth_config_provider is not None:

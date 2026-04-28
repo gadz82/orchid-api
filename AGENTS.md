@@ -22,8 +22,10 @@ orchid-api/
       messages.py            Send messages + document upload (multipart/form-data)
       streaming.py           SSE-streamed message send (Phase 9)
       resume.py              Resume after HITL approval pause
+      session.py             POST /session/warm — per-user MCP capability warm-up
       sharing.py             Promote chat RAG data to user-common scope
       mcp_auth.py            Outbound MCP per-server OAuth: list/authorize/callback/revoke
+                              (callback also warms the just-authorized server)
       mcp_gateway.py         /mcp-gateway/config — gateway exposure overrides
       auth_info.py           /auth-info — public posture + upstream-OAuth discovery (Phase 1)
       auth_exchange.py       /auth/exchange-code + /auth/refresh-token (Phases 2 + 4B)
@@ -61,6 +63,8 @@ orchid-api/
 
 7. **Don't persist augmented prompts.** Save the original user message to chat history, NOT the version with prepended file content or RAG context.
 
+8. **MCP capability caches are warmed proactively.** `setup_orchid()` calls `Orchid.warm_unauthenticated_capabilities()` after the framework is built so every `auth.mode: none` MCP server's capability cache is populated before the first request. Per-user warming runs once per `(tenant_key, user_id)` — either explicitly via `POST /session/warm` (preferred, called by the frontend after login) or implicitly as a fire-and-forget task scheduled by `get_auth_context` on the first authenticated request. A per-server post-OAuth warm fires from `oauth_callback` once a token is persisted. All three hooks swallow exceptions — warm failures NEVER abort startup or break a request.
+
 ## Configuration (Settings)
 
 All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CONFIG`. The full matrix is in `README.md`; the high-level groups are:
@@ -95,6 +99,7 @@ Chat / messages:
 | POST | `/chats/{id}/upload` | messages | Upload documents for chat RAG |
 | POST | `/chats/{id}/resume` | resume | Resume after a HITL approval pause |
 | POST | `/chats/{id}/share` | sharing | Promote chat RAG to user scope |
+| POST | `/session/warm` | session | Warm per-user MCP capability caches (passthrough + oauth) — idempotent |
 | POST | `/chat` | legacy | Single-shot (no persistence) |
 | GET | `/health` | main | Readiness check |
 
