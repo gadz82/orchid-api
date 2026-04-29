@@ -98,6 +98,31 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
 
+    # ── Auth-config provider (optional — upstream OAuth discovery) ──
+    # Resolves non-secret upstream-OAuth endpoints + public client_id
+    # from consumer-provided config.  Surfaced over
+    # ``GET /auth-info`` so downstream OAuth clients (MCP gateway,
+    # frontends) can auto-configure instead of duplicating env vars.
+    if s.auth_config_provider_class:
+        provider_cls = import_class(s.auth_config_provider_class)
+        app_ctx.auth_config_provider = provider_cls()
+        logger.info("[API] Auth config provider: %s", s.auth_config_provider_class)
+    else:
+        app_ctx.auth_config_provider = None
+
+    # ── Auth-exchange client (optional — Phase 2 code exchange proxy) ──
+    # When wired, ``POST /auth/exchange-code`` delegates to this client,
+    # which holds the upstream ``client_secret`` and performs the
+    # authorization-code exchange against the IdP.  Downstream OAuth
+    # clients (MCP gateway, frontends) can then run as public PKCE
+    # clients and drop their own copy of ``client_secret``.
+    if s.auth_exchange_client_class:
+        exchange_cls = import_class(s.auth_exchange_client_class)
+        app_ctx.auth_exchange_client = exchange_cls()
+        logger.info("[API] Auth exchange client: %s", s.auth_exchange_client_class)
+    else:
+        app_ctx.auth_exchange_client = None
+
     # ── Build the framework via the mandatory ``Orchid`` facade ──
     # orchid-api applies YAML → env at module import time (settings.py),
     # so ``apply_yaml=False`` prevents a double-application; every knob
@@ -117,6 +142,8 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         mcp_token_store_dsn=s.mcp_token_store_dsn,
         mcp_client_registration_store_class=s.mcp_client_registration_store_class,
         mcp_client_registration_store_dsn=s.mcp_client_registration_store_dsn,
+        mcp_gateway_state_store_class=s.mcp_gateway_state_store_class,
+        mcp_gateway_state_store_dsn=s.mcp_gateway_state_store_dsn,
         checkpointer_type=s.checkpointer_type,
         checkpointer_dsn=s.checkpointer_dsn,
         startup_hook=s.startup_hook,
@@ -129,6 +156,40 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         dsn=s.oauth_state_store_dsn,
         ttl_seconds=float(s.oauth_state_ttl_seconds),
     )
+
+    # ── Proactive MCP capability warm-up ──────────────────
+    # ``auth.mode: none`` MCP servers need no user identity, so we can
+    # populate their per-server capability caches before any user
+    # authenticates.  ``passthrough`` and ``oauth`` servers wait for a
+    # user-session start (``POST /session/warm`` from the frontend, or
+    # the lazy backstop in ``get_auth_context`` on first authenticated
+    # request).  Failures here NEVER abort startup.
+    try:
+        warm_report = await app_ctx.orchid.warm_unauthenticated_capabilities()
+        logger.info(
+            "[API] MCP startup warm-up: warmed=%s, skipped=%s, failed=%s",
+            warm_report.warmed,
+            warm_report.skipped,
+            warm_report.failed,
+        )
+    except Exception as exc:
+        logger.warning("[API] MCP startup warm-up raised: %s", exc)
+
+    # ── Expired-token cleanup (one-shot at startup) ───────
+    # The MCP token store accumulates expired rows over time; nothing
+    # reads them once ``record.is_expired`` is true, but they sit in
+    # the DB as a forensic record of every server a user authorised.
+    # Run a single ``DELETE`` here so each restart trims the back-log.
+    # Operators wanting periodic cleanup wire a cron / k8s job to call
+    # ``OrchidMCPTokenStore.cleanup_expired`` directly.  Failures are
+    # non-fatal — the gateway still serves traffic.
+    if app_ctx.orchid.mcp_token_store is not None:
+        try:
+            removed = await app_ctx.orchid.mcp_token_store.cleanup_expired()
+            if removed:
+                logger.info("[API] Purged %d expired MCP token row(s) at startup", removed)
+        except Exception as exc:
+            logger.warning("[API] MCP token cleanup raised: %s", exc)
 
     logger.info(
         "[API] Ready — model=%s, vector_backend=%s, agents=%s",

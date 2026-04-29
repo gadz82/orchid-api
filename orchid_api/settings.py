@@ -46,6 +46,26 @@ class Settings(BaseSettings):
     # ── Auth ──────────────────────────────────────────────────
     identity_resolver_class: str = ""  # dotted path to OrchidIdentityResolver subclass
     auth_domain: str = ""  # default domain for identity resolution
+    # Dotted path to an OrchidAuthConfigProvider subclass.  When set,
+    # ``GET /auth-info`` returns the resolved upstream-OAuth discovery
+    # block so downstream OAuth clients (MCP gateway, frontends) can
+    # auto-configure instead of duplicating endpoint/client_id env vars.
+    auth_config_provider_class: str = ""
+    # Dotted path to an OrchidAuthExchangeClient subclass.  When set,
+    # orchid-api exposes ``POST /auth/exchange-code`` and handles the
+    # secret-bearing upstream-OAuth exchange on behalf of downstream
+    # OAuth clients.  Lets the MCP gateway and Next.js frontends run
+    # as public PKCE-only clients without holding ``client_secret``
+    # themselves.  Phase 2 boundary in the auth-centralisation roadmap.
+    auth_exchange_client_class: str = ""
+    # Name of the env var that holds the PUBLIC upstream-OAuth
+    # ``client_id``.  The provider reads the env var named here at
+    # runtime.  A level of indirection so ``orchid.yml`` can be checked
+    # into version control without leaking the actual client id.
+    auth_oauth_client_id_env: str = ""
+    # Advertised OAuth scope for downstream clients — empty string means
+    # "use whatever the upstream defaults to".
+    auth_oauth_scope: str = ""
 
     # ── LLM ───────────────────────────────────────────────────
     # Provider API keys (GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY,
@@ -81,6 +101,24 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    # ── Streaming ─────────────────────────────────────────────
+    # Hard ceiling on a single SSE response. The graph and any MCP
+    # tool it dispatches share this budget — once it expires the
+    # generator emits a final ``error`` event and stops streaming. Set
+    # high enough to accommodate slow tools but low enough to bound
+    # damage when an upstream hangs.
+    stream_max_seconds: int = 300
+
+    # ── Rate limiting (per tenant + user, in-memory token bucket) ──
+    # Each limit is the burst capacity AND the refill-per-period; a
+    # user who hits the cap waits for a token to refill before the
+    # endpoint accepts their next call. Set ``rate_limit_*`` to 0 to
+    # disable that specific bucket; the dependency still runs (so
+    # auth still resolves) but never rejects.
+    rate_limit_messages_per_minute: int = 30
+    rate_limit_uploads_per_minute: int = 10
+    rate_limit_index_per_minute: int = 5
+
     # ── Dev mode ──────────────────────────────────────────────
     dev_auth_bypass: bool = False
 
@@ -88,10 +126,9 @@ class Settings(BaseSettings):
     startup_hook: str = ""
 
     # ── Admin endpoints ──────────────────────────────────────
-    # The legacy ``POST /index`` endpoint can trigger a full reindex —
-    # disabled by default so a plain authenticated user cannot DOS the
-    # vector store.  Flip to ``true`` (via env or orchid.yml) for dev /
-    # ops workflows.
+    # ``POST /index`` triggers a full reindex — disabled by default so
+    # a plain authenticated user cannot DOS the vector store. Flip to
+    # ``true`` (via env or orchid.yml) for dev / ops workflows.
     allow_index_endpoint: bool = False
 
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
@@ -100,12 +137,27 @@ class Settings(BaseSettings):
 
     # ── MCP 2025-03-26 client-registration store (RFC 7591 DCR) ──
     # Per-server discovered endpoints + DCR-issued credentials.  Same
-    # DSN as the chat + token stores by default (all three backed by
-    # the same DB via shared migrations v001 / v002).
+    # DSN as the chat + token stores by default (all four backed by
+    # the same DB via the unified v001 migration).
     mcp_client_registration_store_class: str = (
         "orchid_ai.persistence.mcp_client_registration_sqlite.OrchidSQLiteMCPClientRegistrationStore"
     )
     mcp_client_registration_store_dsn: str = "~/.orchid/chats.db"
+
+    # ── MCP gateway-state store (Phase 3 — INBOUND MCP OAuth) ────
+    # Holds DCR registrations, pending auth codes, and issued
+    # access/refresh tokens for the orchid-mcp gateway.  Shared
+    # across replicas so multi-instance gateway deployments don't
+    # reinvent their own state.
+    mcp_gateway_state_store_class: str = (
+        "orchid_ai.persistence.mcp_gateway_state_sqlite.OrchidSQLiteMCPGatewayStateStore"
+    )
+    mcp_gateway_state_store_dsn: str = "~/.orchid/chats.db"
+    # Shared service token — downstream gateways (orchid-mcp) must
+    # present this on every ``/mcp-gateway/state/*`` request.  Empty
+    # string disables the endpoints entirely (returns 503 at the
+    # router) — the safe posture when no token is configured.
+    mcp_gateway_state_service_token: str = ""
 
     # ── MCP OAuth state store (PKCE + CSRF state between /authorize + /callback) ──
     # Built-in types: "memory" (default, single-instance).  Swap for a

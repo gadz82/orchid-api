@@ -4,7 +4,6 @@ from __future__ import annotations
 
 
 from orchid_api.models import (
-    ChatRequest,
     ChatResponse,
     ChatSessionOut,
     CreateChatRequest,
@@ -17,17 +16,6 @@ from orchid_api.models import (
 
 
 # ── Request models ─────────────────────────────────────────
-
-
-class TestChatRequest:
-    def test_defaults(self):
-        r = ChatRequest(message="hi")
-        assert r.message == "hi"
-        assert r.chat_id is None
-
-    def test_with_chat_id(self):
-        r = ChatRequest(message="hi", chat_id="abc")
-        assert r.chat_id == "abc"
 
 
 class TestCreateChatRequest:

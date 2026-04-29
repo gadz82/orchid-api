@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import Depends, Header, HTTPException
@@ -15,19 +16,75 @@ from .settings import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 
+async def _safe_warm_for_user(auth: OrchidAuthContext) -> None:
+    """Fire-and-forget warm wrapper that swallows every exception.
+
+    Used as the lazy backstop in :func:`get_auth_context` — frontends
+    that don't yet call ``POST /session/warm`` still get warmed caches
+    on the first authenticated request.  Must NEVER crash the request
+    handler that scheduled it.
+    """
+    if app_ctx.orchid is None:
+        return
+    try:
+        await app_ctx.orchid.session_warmer.warm_for_user(auth)
+    except Exception as exc:
+        logger.warning(
+            "[Auth] Background MCP warm-up for tenant=%s user=%s raised: %s",
+            auth.tenant_key,
+            auth.user_id,
+            exc,
+        )
+
+
+def _schedule_warm_for_user(auth: OrchidAuthContext) -> None:
+    """Schedule :func:`_safe_warm_for_user` once per ``(tenant, user)``.
+
+    Idempotency lives inside the warmer's own ``is_warmed`` cache, so a
+    duplicate schedule is cheap; we still gate here to avoid creating
+    needless background tasks on hot endpoints.
+    """
+    if app_ctx.orchid is None:
+        return
+    warmer = app_ctx.orchid.session_warmer
+    if warmer.is_warmed(auth):
+        return
+    try:
+        asyncio.create_task(_safe_warm_for_user(auth))
+    except RuntimeError:
+        # No running loop (extremely unlikely under FastAPI) — skip.
+        return
+
+
 async def get_auth_context(
     authorization: str = Header(..., description="Bearer <token>"),
     x_auth_domain: str | None = Header(None, alias="x-auth-domain", description="Platform domain (from frontend)"),
     settings: Settings = Depends(get_settings),
 ) -> OrchidAuthContext:
-    """Resolve the Bearer token into a full OrchidAuthContext."""
+    """Resolve the Bearer token into a full OrchidAuthContext.
+
+    The resolver is the single trust boundary for tenancy: ``tenant_key``
+    and ``user_id`` come exclusively from what the IdP attests in the
+    token. The ``x-auth-domain`` header is a routing hint to pick which
+    IdP to call when multiple are configured — it MUST NOT influence
+    the tenant or user identity returned by the resolver. See
+    :class:`orchid_ai.core.identity.OrchidIdentityResolver` for the full
+    security contract.
+    """
     if settings.dev_auth_bypass:
-        logger.info("[Auth] DEV_AUTH_BYPASS enabled — using dummy OrchidAuthContext")
-        return OrchidAuthContext(
+        logger.warning(
+            "[Auth] DEV_AUTH_BYPASS is ENABLED — every request is treated as "
+            "tenant=%s user=%s. This MUST NEVER be on in production.",
+            "99999",
+            "dev-user-00000000",
+        )
+        bypass_ctx = OrchidAuthContext(
             access_token="dev-token",
             tenant_key="99999",
             user_id="dev-user-00000000",
         )
+        _schedule_warm_for_user(bypass_ctx)
+        return bypass_ctx
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
@@ -56,4 +113,5 @@ async def get_auth_context(
     if auth_context.is_expired:
         raise HTTPException(status_code=401, detail="Token is expired")
 
+    _schedule_warm_for_user(auth_context)
     return auth_context
