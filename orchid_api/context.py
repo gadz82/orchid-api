@@ -10,6 +10,10 @@ from fastapi import HTTPException
 
 from orchid_ai import Orchid, OrchidRuntime
 from orchid_ai.config.schema import OrchidAgentsConfig
+from orchid_ai.core.auth_config import (
+    OrchidAuthConfigProvider,
+    OrchidAuthExchangeClient,
+)
 from orchid_ai.core.identity import OrchidIdentityResolver
 from orchid_ai.core.mcp import OrchidMCPClientRegistrationStore, OrchidMCPTokenStore
 from orchid_ai.mcp.oauth_state import OrchidOAuthStateStore
@@ -31,6 +35,17 @@ class AppContext:
     orchid: Orchid | None = None
     http_client: httpx.AsyncClient | None = None
     identity_resolver: OrchidIdentityResolver | None = None
+    # Resolves non-secret upstream-OAuth discovery info (endpoints +
+    # public client_id) for downstream consumers fetching
+    # ``GET /auth-info``.  ``None`` means discovery is not configured —
+    # consumers must fall back to their own env-var overrides.
+    auth_config_provider: OrchidAuthConfigProvider | None = None
+    # Performs the secret-bearing upstream-OAuth code exchange on
+    # behalf of downstream public clients (MCP gateway, frontends).
+    # Exposed via ``POST /auth/exchange-code``.  ``None`` disables the
+    # endpoint (which then returns 503) — downstream clients must
+    # fall back to holding their own ``client_secret``.
+    auth_exchange_client: OrchidAuthExchangeClient | None = None
     oauth_state_store: OrchidOAuthStateStore | None = None
 
     # ── Read-through properties (convenience for existing routers) ──
