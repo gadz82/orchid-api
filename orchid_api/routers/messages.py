@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -10,6 +12,7 @@ from langgraph.errors import GraphInterrupt
 
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.observability import OrchidMetricsHandler
 from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
@@ -25,6 +28,7 @@ from ._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+perf_logger = logging.getLogger("orchid.perf")
 
 router = APIRouter(prefix="/chats", tags=["messages"])
 
@@ -47,6 +51,17 @@ async def send_chat_message(
     Returns ``ChatResponse`` on normal completion, or ``InterruptResponse``
     when the graph pauses for human-in-the-loop tool approval.
     """
+    request_id = uuid.uuid4().hex[:8]
+    request_start = time.perf_counter()
+    perf_logger.info(
+        "[PERF][req=%s] === REQUEST START === chat=%s files=%d msg_len=%d",
+        request_id,
+        chat_id[:8],
+        len(files),
+        len(message),
+    )
+
+    prep_start = time.perf_counter()
     prepared = await prepare_graph_state(
         chat_id,
         message,
@@ -57,23 +72,75 @@ async def send_chat_message(
         runtime=runtime,
         mcp_token_store=mcp_token_store,
     )
+    prep_elapsed = (time.perf_counter() - prep_start) * 1000
+    perf_logger.info("[PERF][req=%s] prepare_graph_state took %.1f ms", request_id, prep_elapsed)
 
     # Run the agent graph (blocking — returns full response)
-    graph_config = {"configurable": {"thread_id": chat_id}}
+    graph_config = {"configurable": {"thread_id": chat_id, "request_id": request_id}}
+    metrics = OrchidMetricsHandler()
+    graph_config["callbacks"] = [metrics]
+
+    graph_start = time.perf_counter()
     try:
         result = await graph.ainvoke(prepared.initial_state, config=graph_config)
     except GraphInterrupt as exc:
         # HITL: graph paused for tool approval — don't persist messages yet
+        graph_elapsed = (time.perf_counter() - graph_start) * 1000
+        total_elapsed = (time.perf_counter() - request_start) * 1000
+        perf_logger.info(
+            "[PERF][req=%s] graph.ainvoke (interrupted) took %.1f ms | total=%.1f ms",
+            request_id,
+            graph_elapsed,
+            total_elapsed,
+        )
         return build_interrupt_response(exc, chat_id, auth.tenant_key)
+    graph_elapsed = (time.perf_counter() - graph_start) * 1000
 
     response_text = result.get("final_response", "No response generated.")
     agents_used = result.get("active_agents", [])
 
     # Persist the original user message (not augmented) + assistant response
+    persist_start = time.perf_counter()
     await chat_repo.add_message(chat_id, "user", prepared.message)
     await chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
-
     await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
+    persist_elapsed = (time.perf_counter() - persist_start) * 1000
+
+    total_elapsed = (time.perf_counter() - request_start) * 1000
+
+    # ── Aggregate metrics summary ──
+    m = metrics.get_metrics()
+    perf_logger.info(
+        "[PERF][req=%s] graph.ainvoke took %.1f ms | persist=%.1f ms | total=%.1f ms",
+        request_id,
+        graph_elapsed,
+        persist_elapsed,
+        total_elapsed,
+    )
+    perf_logger.info(
+        "[PERF][req=%s] LLM stats: calls=%d errors=%d avg_latency=%.3fs total_tokens=%d (prompt=%d completion=%d)",
+        request_id,
+        m["llm_calls"],
+        m["llm_errors"],
+        m["avg_llm_latency_s"],
+        m["total_tokens"],
+        m["prompt_tokens"],
+        m["completion_tokens"],
+    )
+    perf_logger.info(
+        "[PERF][req=%s] Tool stats: tool_calls=%d retries=%d",
+        request_id,
+        m["tool_calls"],
+        m["retries"],
+    )
+    if m["agent_latencies_s"]:
+        perf_logger.info(
+            "[PERF][req=%s] Agent latencies (avg s): %s | call_counts: %s",
+            request_id,
+            m["agent_latencies_s"],
+            m["agent_call_counts"],
+        )
+    perf_logger.info("[PERF][req=%s] === REQUEST END === total=%.1f ms", request_id, total_elapsed)
 
     auth_required = [name for name, ok in prepared.mcp_auth_status.items() if not ok]
     return ChatResponse(

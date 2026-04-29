@@ -17,10 +17,13 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from orchid_ai.observability import configure_perf_logger
 
 from .lifecycle import setup_orchid, teardown_orchid
 from .routers import (
@@ -47,6 +50,29 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Performance logger — opt-in via ORCHID_ENABLE_PERF_LOGS env var ──
+# When unset (default), the ``orchid.perf`` logger is at WARNING so the
+# scattered ``[PERF] …`` info() calls stay silent.  Set
+# ``ORCHID_ENABLE_PERF_LOGS=true`` in the container env to flip it on
+# for profiling sessions.
+_perf_enabled = configure_perf_logger()
+if _perf_enabled:
+    logger.warning("[API] Perf logs ENABLED via %s — expect verbose [PERF] lines", "ORCHID_ENABLE_PERF_LOGS")
+
+# ── Optional LangChain debug — toggle with LANGCHAIN_DEBUG=true ─────
+# Captures every LLM/tool/chain call shape (verbose). Useful only for
+# diagnosing where time is spent inside LangChain itself; leave OFF in
+# normal runs because it floods the container output.
+if os.getenv("LANGCHAIN_DEBUG", "").lower() in ("1", "true", "yes"):
+    try:
+        from langchain.globals import set_debug, set_verbose
+
+        set_debug(True)
+        set_verbose(True)
+        logger.warning("[API] LangChain debug + verbose mode ENABLED via LANGCHAIN_DEBUG env var")
+    except Exception as exc:  # pragma: no cover — best-effort toggle
+        logger.warning("[API] Could not enable LangChain debug: %s", exc)
 
 
 # ── Lifespan (delegates to lifecycle helpers) ──────────────────
