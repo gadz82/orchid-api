@@ -242,11 +242,11 @@ async def test_authorize_auto_discovers_on_first_call(
 
     with (
         patch(
-            "orchid_api.routers.mcp_auth.probe_mcp_server_for_resource_metadata",
+            "orchid_api.routers._mcp_auth.authorize.probe_mcp_server_for_resource_metadata",
             new=_fake_probe,
         ),
         patch(
-            "orchid_api.routers.mcp_auth.OrchidMCPAuthDiscovery.ensure_registration",
+            "orchid_api.routers._mcp_auth.authorize.OrchidMCPAuthDiscovery.ensure_registration",
             new=_fake_ensure,
         ),
     ):
@@ -277,7 +277,7 @@ async def test_authorize_auto_discovery_failure_surfaces_502(
         raise OrchidMCPDiscoveryError(kwargs["server_name"], "server not 401")
 
     with patch(
-        "orchid_api.routers.mcp_auth.probe_mcp_server_for_resource_metadata",
+        "orchid_api.routers._mcp_auth.authorize.probe_mcp_server_for_resource_metadata",
         new=_probe_fails,
     ):
         with pytest.raises(HTTPException) as exc_info:
@@ -301,6 +301,7 @@ async def test_callback_invalid_state(settings, empty_registration_store):
     result = await oauth_callback(
         code="abc",
         state="invalid-state",
+        error="",
         settings=settings,
         state_store=OrchidInMemoryOAuthStateStore(),
         token_store=None,
@@ -314,6 +315,7 @@ async def test_callback_missing_code(settings, empty_registration_store):
     result = await oauth_callback(
         code="",
         state="something",
+        error="",
         settings=settings,
         state_store=OrchidInMemoryOAuthStateStore(),
         token_store=None,
@@ -325,6 +327,8 @@ async def test_callback_missing_code(settings, empty_registration_store):
 @pytest.mark.asyncio
 async def test_callback_error_param(settings, empty_registration_store):
     result = await oauth_callback(
+        code="",
+        state="",
         error="access_denied",
         settings=settings,
         state_store=OrchidInMemoryOAuthStateStore(),
@@ -332,6 +336,258 @@ async def test_callback_error_param(settings, empty_registration_store):
         registration_store=empty_registration_store,
     )
     assert result.status_code == 400
+
+
+# ── XSS regression: every interpolated value must be HTML-escaped ──
+
+
+@pytest.mark.asyncio
+async def test_callback_escapes_oauth_error_param(settings, empty_registration_store):
+    """A crafted ``?error=...`` must not inject markup into the response body."""
+    result = await oauth_callback(
+        code="",
+        state="",
+        error="<script>alert('xss')</script>",
+        settings=settings,
+        state_store=OrchidInMemoryOAuthStateStore(),
+        token_store=None,
+        registration_store=empty_registration_store,
+    )
+    body = result.body.decode()
+    assert "<script>alert('xss')</script>" not in body
+    assert "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;" in body
+
+
+@pytest.mark.asyncio
+async def test_callback_escapes_unknown_server_name(settings, empty_registration_store):
+    """A pending state that points at a missing registration is rendered with the
+    server name escaped — defense-in-depth in case a future code path lets a
+    user-influenced string flow into ``pending.server_name``."""
+    state_store = OrchidInMemoryOAuthStateStore()
+
+    from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState
+
+    await state_store.put(
+        "state-token",
+        OrchidOAuthPendingState(
+            server_name="<img src=x onerror=alert(1)>",
+            tenant_id="t1",
+            user_id="u1",
+            code_verifier="v",
+            token_endpoint="",
+            created_at=time.time(),
+        ),
+    )
+
+    result = await oauth_callback(
+        code="abc",
+        state="state-token",
+        error="",
+        settings=settings,
+        state_store=state_store,
+        token_store=None,
+        registration_store=empty_registration_store,
+    )
+    body = result.body.decode()
+    assert "<img src=x onerror=alert(1)>" not in body
+    assert "&lt;img src=x onerror=alert(1)&gt;" in body
+
+
+@pytest.mark.asyncio
+async def test_callback_escapes_token_exchange_exception(
+    settings,
+    registration_store,
+    registration,
+):
+    """An exception during token exchange must be HTML-escaped before being
+    embedded in the failure page — otherwise a malicious ``token_endpoint``
+    can return a payload that injects script into the user's browser."""
+    state_store = OrchidInMemoryOAuthStateStore()
+
+    from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState
+
+    await state_store.put(
+        "state-token",
+        OrchidOAuthPendingState(
+            server_name=registration.server_name,
+            tenant_id="t1",
+            user_id="u1",
+            code_verifier="v",
+            token_endpoint=registration.token_endpoint,
+            created_at=time.time(),
+        ),
+    )
+
+    class _Boom:
+        def __init__(self, *_, **__):
+            raise RuntimeError("<script>alert(1)</script>")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    from unittest.mock import patch
+
+    with patch("httpx.AsyncClient", _Boom):
+        result = await oauth_callback(
+            code="abc",
+            state="state-token",
+            error="",
+            settings=settings,
+            state_store=state_store,
+            token_store=None,
+            registration_store=registration_store,
+        )
+
+    body = result.body.decode()
+    assert result.status_code == 500
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
+
+
+@pytest.mark.asyncio
+async def test_callback_escapes_upstream_4xx_body(
+    settings,
+    registration_store,
+    registration,
+):
+    """A 4xx response from ``token_endpoint`` whose body contains markup must be
+    rendered with the body HTML-escaped — the previous ``.replace`` only
+    handled ``<`` and ``>``, leaving ``&``/``'``/``"`` open to injection."""
+    state_store = OrchidInMemoryOAuthStateStore()
+
+    from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState
+
+    await state_store.put(
+        "state-token",
+        OrchidOAuthPendingState(
+            server_name=registration.server_name,
+            tenant_id="t1",
+            user_id="u1",
+            code_verifier="v",
+            token_endpoint=registration.token_endpoint,
+            created_at=time.time(),
+        ),
+    )
+
+    class _Resp:
+        status_code = 400
+        text = '<a href="javascript:alert(1)">x</a>'
+
+        def json(self):
+            return {}
+
+    class _Client:
+        def __init__(self, *_, **__): ...
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, *_, **__):
+            return _Resp()
+
+    from unittest.mock import patch
+
+    with patch("httpx.AsyncClient", _Client):
+        result = await oauth_callback(
+            code="abc",
+            state="state-token",
+            error="",
+            settings=settings,
+            state_store=state_store,
+            token_store=None,
+            registration_store=registration_store,
+        )
+
+    body = result.body.decode()
+    assert result.status_code == 400
+    assert '<a href="javascript:alert(1)">x</a>' not in body
+    assert "&lt;a href=&quot;javascript:alert(1)&quot;&gt;x&lt;/a&gt;" in body
+
+
+@pytest.mark.asyncio
+async def test_callback_success_uses_safe_json_payload(
+    settings,
+    registration_store,
+    registration,
+):
+    """The success page embeds the server name via JSON.dumps — both quotes
+    and a stray ``</script>`` must be escaped so a hostile registration name
+    cannot break out of the surrounding script tag."""
+    state_store = OrchidInMemoryOAuthStateStore()
+
+    from orchid_ai.core.mcp import OrchidMCPClientRegistration
+    from orchid_ai.mcp.oauth_state import OrchidOAuthPendingState
+
+    hostile_name = 'evil"</script><img src=x>'
+    await state_store.put(
+        "state-token",
+        OrchidOAuthPendingState(
+            server_name=hostile_name,
+            tenant_id="t1",
+            user_id="u1",
+            code_verifier="v",
+            token_endpoint=registration.token_endpoint,
+            created_at=time.time(),
+        ),
+    )
+    registration_store.get = AsyncMock(
+        return_value=OrchidMCPClientRegistration(
+            server_name=hostile_name,
+            authorization_endpoint=registration.authorization_endpoint,
+            token_endpoint=registration.token_endpoint,
+            registration_endpoint=registration.registration_endpoint,
+            issuer=registration.issuer,
+            scopes_supported=registration.scopes_supported,
+            token_endpoint_auth_methods_supported=registration.token_endpoint_auth_methods_supported,
+            client_id=registration.client_id,
+            client_secret=registration.client_secret,
+        )
+    )
+
+    class _Resp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"access_token": "at", "expires_in": 3600}
+
+    class _Client:
+        def __init__(self, *_, **__): ...
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, *_, **__):
+            return _Resp()
+
+    from unittest.mock import patch
+
+    with patch("httpx.AsyncClient", _Client), patch("orchid_api.routers._mcp_auth.callback.app_ctx") as ctx:
+        ctx.orchid = None
+        result = await oauth_callback(
+            code="abc",
+            state="state-token",
+            error="",
+            settings=settings,
+            state_store=state_store,
+            token_store=None,
+            registration_store=registration_store,
+        )
+
+    body = result.body.decode()
+    assert result.status_code == 200
+    # JSON-encoded server name must keep the literal ``</script>`` neutralised.
+    assert "</script><img src=x>" not in body.split("</script>")[0]
+    assert "<\\/script>" in body
 
 
 # ── revoke_token ───────────────────────────────────────────

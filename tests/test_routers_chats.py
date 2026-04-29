@@ -127,3 +127,52 @@ async def test_delete_chat_not_found(auth, mock_chat_repo):
     with pytest.raises(HTTPException) as exc:
         await delete_chat("nonexistent", auth=auth, chat_repo=mock_chat_repo)
     assert exc.value.status_code == 404
+
+
+# ── pagination cap ─────────────────────────────────────────
+
+
+def test_get_messages_pagination_is_bounded():
+    """``?limit=`` is constrained to [1, 500] and ``?offset=`` to [0, ∞).
+
+    The cap is enforced declaratively via ``Query(..., ge=, le=)`` so a
+    runaway client can't ask for an unbounded slice. Validated through
+    a real ``FastAPI`` instance so the behaviour mirrors production.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from orchid_api.auth import get_auth_context
+    from orchid_api.context import get_chat_repo
+    from orchid_api.routers.chats import router
+    from unittest.mock import AsyncMock
+
+    app = FastAPI()
+    app.include_router(router)
+
+    repo = AsyncMock()
+    repo.get_chat = AsyncMock(return_value=None)
+    repo.get_messages = AsyncMock(return_value=[])
+
+    app.dependency_overrides[get_chat_repo] = lambda: repo
+    app.dependency_overrides[get_auth_context] = lambda: OrchidAuthContext(
+        access_token="t", tenant_key="t1", user_id="u1"
+    )
+
+    client = TestClient(app)
+
+    # Limit > ceiling — 422 from FastAPI's query-parameter validator.
+    resp = client.get("/chats/c1/messages?limit=999999")
+    assert resp.status_code == 422
+
+    # Limit = 0 — disallowed (``ge=1``).
+    resp = client.get("/chats/c1/messages?limit=0")
+    assert resp.status_code == 422
+
+    # Negative offset — disallowed (``ge=0``).
+    resp = client.get("/chats/c1/messages?offset=-1")
+    assert resp.status_code == 422
+
+    # Limit at the ceiling — accepted (chat-not-found 404 from the handler).
+    resp = client.get("/chats/c1/messages?limit=500")
+    assert resp.status_code == 404

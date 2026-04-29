@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -18,7 +19,8 @@ from orchid_ai.runtime import OrchidRuntime
 
 from ..auth import get_auth_context
 from ..context import get_chat_repo, get_graph, get_mcp_token_store_optional, get_runtime
-from ..models import ChatResponse, InterruptResponse
+from ..models import ChatResponse, InterruptResponse, UploadFileResult, UploadResponse
+from ..rate_limit import rate_limit
 from ..settings import Settings, get_settings
 from ._helpers import (
     auto_title_if_first_message,
@@ -27,17 +29,89 @@ from ._helpers import (
     verify_chat_ownership,
 )
 
+_settings = get_settings()
+_messages_rate_limit = rate_limit(
+    "messages",
+    calls=_settings.rate_limit_messages_per_minute,
+    period=60.0,
+)
+_uploads_rate_limit = rate_limit(
+    "uploads",
+    calls=_settings.rate_limit_uploads_per_minute,
+    period=60.0,
+)
+
 logger = logging.getLogger(__name__)
 perf_logger = logging.getLogger("orchid.perf")
 
 router = APIRouter(prefix="/chats", tags=["messages"])
 
 
-@router.post("/{chat_id}/messages", response_model=ChatResponse | InterruptResponse)
+_ALLOWED_EXTENSIONS: frozenset[str] = frozenset(
+    {".pdf", ".docx", ".xlsx", ".csv", ".md", ".txt", ".png", ".jpg", ".jpeg"}
+)
+
+_ALLOWED_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "text/plain",
+        "text/markdown",
+        "image/png",
+        "image/jpeg",
+        "application/octet-stream",
+        "",
+    }
+)
+
+_MAGIC_BYTES: dict[str, tuple[bytes, ...]] = {
+    ".pdf": (b"%PDF-",),
+    ".docx": (b"PK\x03\x04",),
+    ".xlsx": (b"PK\x03\x04",),
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+}
+
+
+def _validate_upload(
+    raw_filename: str,
+    content_type: str | None,
+    file_bytes: bytes,
+) -> tuple[str, str | None]:
+    """Sanitise filename + validate extension, MIME, and magic bytes.
+
+    Returns ``(safe_name, error)`` — ``error`` is ``None`` on success.
+    """
+    safe_name = Path(raw_filename).name
+    if not safe_name or safe_name.startswith(".") or "\x00" in safe_name:
+        return raw_filename, "Invalid filename"
+
+    ext = Path(safe_name).suffix.lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        return safe_name, f"Unsupported file type: {ext or '(none)'}"
+
+    if (content_type or "") not in _ALLOWED_MIME_TYPES:
+        return safe_name, f"Disallowed MIME type: {content_type}"
+
+    expected_magic = _MAGIC_BYTES.get(ext)
+    if expected_magic and not any(file_bytes.startswith(m) for m in expected_magic):
+        return safe_name, "File contents do not match declared type"
+
+    return safe_name, None
+
+
+@router.post(
+    "/{chat_id}/messages",
+    response_model=ChatResponse | InterruptResponse,
+    dependencies=[Depends(_messages_rate_limit)],
+)
 async def send_chat_message(
     chat_id: str,
     message: str = Form(...),
-    files: list[UploadFile] = File(default=[]),
+    files: list[UploadFile] = File(default_factory=list),
     auth: OrchidAuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
     chat_repo: OrchidChatStorage = Depends(get_chat_repo),
@@ -155,7 +229,11 @@ async def send_chat_message(
 # ── Document Upload ──────────────────────────────────────────
 
 
-@router.post("/{chat_id}/upload")
+@router.post(
+    "/{chat_id}/upload",
+    response_model=UploadResponse,
+    dependencies=[Depends(_uploads_rate_limit)],
+)
 async def upload_documents(
     chat_id: str,
     files: list[UploadFile],
@@ -163,7 +241,7 @@ async def upload_documents(
     settings: Settings = Depends(get_settings),
     chat_repo: OrchidChatStorage = Depends(get_chat_repo),
     runtime: OrchidRuntime = Depends(get_runtime),
-):
+) -> UploadResponse:
     """Upload documents for chat-scoped RAG."""
     from orchid_ai.core.repository import OrchidVectorWriter
     from orchid_ai.documents.chunker import ChunkConfig
@@ -187,40 +265,48 @@ async def upload_documents(
         chunk_overlap=settings.chunk_overlap,
     )
 
-    results = []
+    max_bytes = settings.upload_max_size_mb * 1024 * 1024
+    results: list[UploadFileResult] = []
     for file in files:
         if not file.filename:
             continue
 
         file_bytes = await file.read()
-        max_bytes = settings.upload_max_size_mb * 1024 * 1024
         if len(file_bytes) > max_bytes:
             results.append(
-                {"filename": file.filename, "error": f"File too large (max {settings.upload_max_size_mb}MB)"}
+                UploadFileResult(
+                    filename=file.filename,
+                    error=f"File too large (max {settings.upload_max_size_mb}MB)",
+                )
             )
+            continue
+
+        safe_name, error = _validate_upload(file.filename, file.content_type, file_bytes)
+        if error is not None:
+            results.append(UploadFileResult(filename=safe_name, error=error))
             continue
 
         try:
             chunks = await ingest_document(
                 file_bytes=file_bytes,
-                filename=file.filename,
+                filename=safe_name,
                 scope=scope,
                 namespace=settings.upload_namespace,
                 writer=reader,
                 chunk_config=chunk_config,
                 vision_model=settings.vision_model or settings.litellm_model,
             )
-            results.append({"filename": file.filename, "chunks_indexed": chunks})
+            results.append(UploadFileResult(filename=safe_name, chunks_indexed=chunks))
 
             await chat_repo.add_message(
                 chat_id,
                 "system",
-                f"Uploaded {file.filename} ({chunks} chunks indexed)",
+                f"Uploaded {safe_name} ({chunks} chunks indexed)",
             )
         except ValueError as exc:
-            results.append({"filename": file.filename, "error": str(exc)})
+            results.append(UploadFileResult(filename=safe_name, error=str(exc)))
         except Exception as exc:
-            logger.error("[Upload] Failed to process %s: %s", file.filename, exc)
-            results.append({"filename": file.filename, "error": "Processing failed"})
+            logger.error("[Upload] Failed to process %s: %s", safe_name, exc)
+            results.append(UploadFileResult(filename=safe_name, error="Processing failed"))
 
-    return {"status": "ok", "files": results}
+    return UploadResponse(status="ok", files=results)

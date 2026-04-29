@@ -101,6 +101,24 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    # ── Streaming ─────────────────────────────────────────────
+    # Hard ceiling on a single SSE response. The graph and any MCP
+    # tool it dispatches share this budget — once it expires the
+    # generator emits a final ``error`` event and stops streaming. Set
+    # high enough to accommodate slow tools but low enough to bound
+    # damage when an upstream hangs.
+    stream_max_seconds: int = 300
+
+    # ── Rate limiting (per tenant + user, in-memory token bucket) ──
+    # Each limit is the burst capacity AND the refill-per-period; a
+    # user who hits the cap waits for a token to refill before the
+    # endpoint accepts their next call. Set ``rate_limit_*`` to 0 to
+    # disable that specific bucket; the dependency still runs (so
+    # auth still resolves) but never rejects.
+    rate_limit_messages_per_minute: int = 30
+    rate_limit_uploads_per_minute: int = 10
+    rate_limit_index_per_minute: int = 5
+
     # ── Dev mode ──────────────────────────────────────────────
     dev_auth_bypass: bool = False
 
@@ -108,10 +126,9 @@ class Settings(BaseSettings):
     startup_hook: str = ""
 
     # ── Admin endpoints ──────────────────────────────────────
-    # The legacy ``POST /index`` endpoint can trigger a full reindex —
-    # disabled by default so a plain authenticated user cannot DOS the
-    # vector store.  Flip to ``true`` (via env or orchid.yml) for dev /
-    # ops workflows.
+    # ``POST /index`` triggers a full reindex — disabled by default so
+    # a plain authenticated user cannot DOS the vector store. Flip to
+    # ``true`` (via env or orchid.yml) for dev / ops workflows.
     allow_index_endpoint: bool = False
 
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
