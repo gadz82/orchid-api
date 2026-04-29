@@ -2,6 +2,48 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-04-29)
+
+### Bug Fixes
+
+- Update documentation, tests, agent files and configs.
+  ([`0a18dc9`](https://github.com/gadz82/orchid-api/commit/0a18dc9f5ece2dea3543c1834b532d4ec86faf3c))
+
+### Features
+
+- Add identity bridging and support for advanced OAuth flows
+  ([`9bbbced`](https://github.com/gadz82/orchid-api/commit/9bbbcedbebb94c8113a7efaf4e4c8b7b39cddd3a))
+
+- Add multi-tenant domain support to auth-info and auth-exchange routes
+  ([`95447ab`](https://github.com/gadz82/orchid-api/commit/95447ab14936961f6f50a94ca04d3b0c912511b4))
+
+- Add performance logging for streaming and message routes with metrics and detailed timing
+  ([`4a0e095`](https://github.com/gadz82/orchid-api/commit/4a0e095bc71f114ec387993815af327ef3154f2d))
+
+- Add proactive MCP capability cache warming and related session endpoints
+  ([`a0108f6`](https://github.com/gadz82/orchid-api/commit/a0108f6c4831b8e1274fab2fcf6b6ed07785adbe))
+
+- Bump orchid-ai dependency to >=1.4.0 in CLI and API
+  ([`e84c8af`](https://github.com/gadz82/orchid-api/commit/e84c8af87b31b1f7c8cb7a22b6ded52aabdcb8e7))
+
+- Mcp dedicated routes and auth support, fixing auth consistency issues
+  ([`5371949`](https://github.com/gadz82/orchid-api/commit/5371949c160e5b53733c6a242093a120278028c3))
+
+- Mcp discovery add auth config
+  ([`3c4a8f2`](https://github.com/gadz82/orchid-api/commit/3c4a8f213e9d7830b953303913fa64ee9cc78faf))
+
+- Mcp oauth discovery moved to api
+  ([`56fcf6e`](https://github.com/gadz82/orchid-api/commit/56fcf6e8b99bdc9421413a4130b1ffd3ae5d2327))
+
+- Mcp oauth management in orchid db
+  ([`a65ff92`](https://github.com/gadz82/orchid-api/commit/a65ff924b02838b4656be57bfc5c9b8149fde1d0))
+
+### Refactoring
+
+- Remove legacy routes and tests for deprecated endpoints
+  ([`8861517`](https://github.com/gadz82/orchid-api/commit/88615176928843431dc0cd67fbed1c2741bea6ce))
+
+
 ## v1.2.3 (2026-04-22)
 
 ### Bug Fixes
