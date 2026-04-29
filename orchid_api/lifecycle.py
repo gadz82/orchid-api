@@ -175,6 +175,22 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     except Exception as exc:
         logger.warning("[API] MCP startup warm-up raised: %s", exc)
 
+    # ── Expired-token cleanup (one-shot at startup) ───────
+    # The MCP token store accumulates expired rows over time; nothing
+    # reads them once ``record.is_expired`` is true, but they sit in
+    # the DB as a forensic record of every server a user authorised.
+    # Run a single ``DELETE`` here so each restart trims the back-log.
+    # Operators wanting periodic cleanup wire a cron / k8s job to call
+    # ``OrchidMCPTokenStore.cleanup_expired`` directly.  Failures are
+    # non-fatal — the gateway still serves traffic.
+    if app_ctx.orchid.mcp_token_store is not None:
+        try:
+            removed = await app_ctx.orchid.mcp_token_store.cleanup_expired()
+            if removed:
+                logger.info("[API] Purged %d expired MCP token row(s) at startup", removed)
+        except Exception as exc:
+            logger.warning("[API] MCP token cleanup raised: %s", exc)
+
     logger.info(
         "[API] Ready — model=%s, vector_backend=%s, agents=%s",
         s.litellm_model,

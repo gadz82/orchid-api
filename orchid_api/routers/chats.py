@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.persistence.base import OrchidChatStorage
@@ -49,8 +49,8 @@ async def list_chats(
 @router.get("/{chat_id}/messages", response_model=list[MessageOut])
 async def get_messages(
     chat_id: str,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=500, description="Max messages to return (1-500)."),
+    offset: int = Query(0, ge=0, description="Skip the first N messages."),
     auth: OrchidAuthContext = Depends(get_auth_context),
     chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):

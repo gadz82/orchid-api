@@ -201,3 +201,79 @@ async def test_upload_chat_not_found(auth):
                 runtime=_runtime(),
             )
         assert exc.value.status_code == 404
+
+
+# ── _validate_upload — filename / MIME / magic-byte hardening ─────
+
+
+class TestValidateUpload:
+    """Direct tests for the ``_validate_upload`` helper."""
+
+    def _validate(self, filename, content_type, file_bytes):
+        from orchid_api.routers.messages import _validate_upload
+
+        return _validate_upload(filename, content_type, file_bytes)
+
+    def test_strips_directory_traversal(self):
+        safe, err = self._validate(
+            "../../etc/passwd.pdf",
+            "application/pdf",
+            b"%PDF-1.7 fake",
+        )
+        assert err is None
+        assert safe == "passwd.pdf"
+
+    def test_rejects_dotfile(self):
+        _, err = self._validate(".htaccess", "text/plain", b"deny from all")
+        assert err == "Invalid filename"
+
+    def test_rejects_null_byte(self):
+        _, err = self._validate("ok\x00.pdf", "application/pdf", b"%PDF-1.7")
+        assert err == "Invalid filename"
+
+    def test_rejects_unsupported_extension(self):
+        _, err = self._validate("malware.exe", "application/octet-stream", b"MZ\x90")
+        assert err == "Unsupported file type: .exe"
+
+    def test_rejects_disallowed_mime(self):
+        _, err = self._validate("file.pdf", "application/x-msdownload", b"%PDF-1.7")
+        assert err == "Disallowed MIME type: application/x-msdownload"
+
+    def test_rejects_bad_magic_for_pdf(self):
+        _, err = self._validate("fake.pdf", "application/pdf", b"<html>not a pdf</html>")
+        assert err == "File contents do not match declared type"
+
+    def test_rejects_bad_magic_for_png(self):
+        _, err = self._validate("fake.png", "image/png", b"\xff\xd8\xff still not png")
+        assert err == "File contents do not match declared type"
+
+    def test_accepts_valid_pdf(self):
+        safe, err = self._validate("doc.pdf", "application/pdf", b"%PDF-1.7\n...rest")
+        assert err is None
+        assert safe == "doc.pdf"
+
+    def test_accepts_valid_jpeg(self):
+        safe, err = self._validate("photo.jpg", "image/jpeg", b"\xff\xd8\xff\xe0\x00\x10JFIF")
+        assert err is None
+
+    def test_accepts_docx_zip_signature(self):
+        safe, err = self._validate(
+            "doc.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            b"PK\x03\x04rest-of-zip",
+        )
+        assert err is None
+
+    def test_accepts_text_without_magic_check(self):
+        safe, err = self._validate("notes.txt", "text/plain", b"hello world")
+        assert err is None
+
+    def test_accepts_csv_with_octet_stream_mime(self):
+        """Browsers occasionally send ``application/octet-stream`` for CSV."""
+        _, err = self._validate("data.csv", "application/octet-stream", b"a,b,c\n1,2,3")
+        assert err is None
+
+    def test_accepts_empty_content_type(self):
+        """``UploadFile.content_type`` can be ``None`` / empty."""
+        _, err = self._validate("notes.md", None, b"# Title")
+        assert err is None

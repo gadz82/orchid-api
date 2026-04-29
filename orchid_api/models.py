@@ -11,11 +11,6 @@ from pydantic import BaseModel
 # ── Request models ──────────────────────────────────────────
 
 
-class ChatRequest(BaseModel):
-    message: str
-    chat_id: str | None = None
-
-
 class CreateChatRequest(BaseModel):
     title: str = ""
 
@@ -81,6 +76,32 @@ class IndexResponse(BaseModel):
     status: str
     tenant_id: str
     indexed: dict[str, int]
+
+
+class UploadFileResult(BaseModel):
+    """Per-file outcome from ``POST /chats/{id}/upload``.
+
+    Exactly one of ``chunks_indexed`` or ``error`` is populated. The
+    filename comes from the request — already sanitised by the upload
+    endpoint via ``Path(name).name`` so it never contains directory
+    components.
+    """
+
+    filename: str
+    chunks_indexed: int | None = None
+    error: str | None = None
+
+
+class UploadResponse(BaseModel):
+    """Response shape for ``POST /chats/{id}/upload``.
+
+    Always returns 200 even when individual files failed — the per-file
+    ``error`` field carries the failure mode so the UI can surface a
+    partial success.
+    """
+
+    status: str
+    files: list[UploadFileResult]
 
 
 # ── Conversion helpers ──────────────────────────────────────

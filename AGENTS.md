@@ -31,7 +31,6 @@ orchid-api/
       auth_exchange.py       /auth/exchange-code + /auth/refresh-token (Phases 2 + 4B)
       auth_identity.py       /auth/resolve-identity — identity bridge (Phase 4A)
       mcp_gateway_state.py   /mcp-gateway/state/* — Phase 3 multi-replica gateway state
-      legacy.py              Legacy single-shot /chat endpoint (JSON body)
   pyproject.toml
 ```
 
@@ -53,9 +52,9 @@ orchid-api/
 
 2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `OrchidAuthContext`. No other code initiates OAuth flows (ADR-010).
 
-3. **`AppContext` owns a single `Orchid` handle.** `context.py:app_ctx.orchid` is the framework's mandatory :class:`orchid_ai.Orchid` facade, created by `lifecycle.setup_orchid()`. Legacy fields (`runtime`, `graph`, `chat_repo`, `mcp_token_store`, `agents_config`) are **read-through properties** that delegate to `app_ctx.orchid`, so FastAPI deps (`get_runtime`, `get_graph`, `get_chat_repo`, …) keep their existing contract. The only flat fields are adapter-specific concerns that don't belong inside the framework library: `http_client`, `identity_resolver`, `oauth_state_store`. Routers access everything via `from ..context import app_ctx`.
+3. **`AppContext` owns a single `Orchid` handle.** `context.py:app_ctx.orchid` is the framework's mandatory :class:`orchid_ai.Orchid` facade, created by `lifecycle.setup_orchid()`. Top-level helpers (`runtime`, `graph`, `chat_repo`, `mcp_token_store`, `agents_config`) are **read-through properties** that delegate to `app_ctx.orchid`, so FastAPI deps (`get_runtime`, `get_graph`, `get_chat_repo`, …) keep their existing contract. The only flat fields are adapter-specific concerns that don't belong inside the framework library: `http_client`, `identity_resolver`, `oauth_state_store`. Routers access everything via `from ..context import app_ctx`.
 
-4. **Routers are split by domain (SRP).** `chats.py` = CRUD, `messages.py` = send + upload, `sharing.py` = share, `legacy.py` = backward compat. New endpoints go in the appropriate router, never in `main.py`.
+4. **Routers are split by domain (SRP).** `chats.py` = CRUD, `messages.py` = send + upload, `sharing.py` = share. New endpoints go in the appropriate router, never in `main.py`.
 
 5. **No agent or framework code here.** No `OrchidAgent` subclasses, no graph wiring, no RAG logic. Those belong in `orchid/` or consumer projects.
 
@@ -100,8 +99,7 @@ Chat / messages:
 | POST | `/chats/{id}/resume` | resume | Resume after a HITL approval pause |
 | POST | `/chats/{id}/share` | sharing | Promote chat RAG to user scope |
 | POST | `/session/warm` | session | Warm per-user MCP capability caches (passthrough + oauth) — idempotent |
-| POST | `/chat` | legacy | Single-shot (no persistence) |
-| GET | `/health` | main | Readiness check |
+| GET | `/health` | diagnostics | Readiness check |
 
 Outbound MCP OAuth (per-user external-server tokens):
 
@@ -168,7 +166,7 @@ local dev; production requires a valid Bearer.  See
 
 ## Common Pitfalls
 
-- `POST /chats/{id}/messages` uses `multipart/form-data`, not JSON. The legacy `POST /chat` uses JSON.
+- `POST /chats/{id}/messages` uses `multipart/form-data`, not JSON.
 - CORS allows `localhost:3000` and `frontend:3000` — add new origins in `main.py` if needed.
 - The `lifespan()` function builds the graph at startup. Changes to agent config require a restart.
 - Embedding dimension mismatch (768 vs 1536 vs 3072) causes silent retrieval failures. Switching models requires re-indexing.

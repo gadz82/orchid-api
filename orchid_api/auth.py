@@ -61,9 +61,23 @@ async def get_auth_context(
     x_auth_domain: str | None = Header(None, alias="x-auth-domain", description="Platform domain (from frontend)"),
     settings: Settings = Depends(get_settings),
 ) -> OrchidAuthContext:
-    """Resolve the Bearer token into a full OrchidAuthContext."""
+    """Resolve the Bearer token into a full OrchidAuthContext.
+
+    The resolver is the single trust boundary for tenancy: ``tenant_key``
+    and ``user_id`` come exclusively from what the IdP attests in the
+    token. The ``x-auth-domain`` header is a routing hint to pick which
+    IdP to call when multiple are configured — it MUST NOT influence
+    the tenant or user identity returned by the resolver. See
+    :class:`orchid_ai.core.identity.OrchidIdentityResolver` for the full
+    security contract.
+    """
     if settings.dev_auth_bypass:
-        logger.info("[Auth] DEV_AUTH_BYPASS enabled — using dummy OrchidAuthContext")
+        logger.warning(
+            "[Auth] DEV_AUTH_BYPASS is ENABLED — every request is treated as "
+            "tenant=%s user=%s. This MUST NEVER be on in production.",
+            "99999",
+            "dev-user-00000000",
+        )
         bypass_ctx = OrchidAuthContext(
             access_token="dev-token",
             tenant_key="99999",

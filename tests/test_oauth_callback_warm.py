@@ -99,7 +99,7 @@ async def test_callback_invokes_warm_one_for_user_after_token_save():
     fake_orchid.session_warmer.warm_one_for_user = AsyncMock()
 
     with (
-        patch("orchid_api.routers.mcp_auth.app_ctx") as mock_ctx,
+        patch("orchid_api.routers._mcp_auth.callback.app_ctx") as mock_ctx,
         patch("httpx.AsyncClient", _FakeAsyncClient),
     ):
         mock_ctx.orchid = fake_orchid
@@ -136,7 +136,7 @@ async def test_callback_swallows_warm_failure():
     fake_orchid.session_warmer.warm_one_for_user = AsyncMock(side_effect=RuntimeError("warmer broken"))
 
     with (
-        patch("orchid_api.routers.mcp_auth.app_ctx") as mock_ctx,
+        patch("orchid_api.routers._mcp_auth.callback.app_ctx") as mock_ctx,
         patch("httpx.AsyncClient", _FakeAsyncClient),
     ):
         mock_ctx.orchid = fake_orchid
@@ -164,7 +164,7 @@ async def test_callback_skips_warm_when_runtime_missing():
     token_store.save_token = AsyncMock()
 
     with (
-        patch("orchid_api.routers.mcp_auth.app_ctx") as mock_ctx,
+        patch("orchid_api.routers._mcp_auth.callback.app_ctx") as mock_ctx,
         patch("httpx.AsyncClient", _FakeAsyncClient),
     ):
         mock_ctx.orchid = None

@@ -55,7 +55,6 @@ curl http://localhost:8000/health
 | `POST` | `/chats/{id}/upload` | multipart/form-data | Upload documents for chat RAG |
 | `POST` | `/chats/{id}/share` | -- | Promote chat RAG data to user scope |
 | `POST` | `/chats/{id}/resume` | JSON | Resume after a HITL approval pause |
-| `POST` | `/chat` | JSON | Legacy single-shot (no persistence) |
 | `GET` | `/health` | -- | Readiness check |
 
 ### Outbound MCP OAuth (per-user external-server tokens)
@@ -126,7 +125,8 @@ orchid_api/
     auth_exchange.py       POST /auth/exchange-code + /auth/refresh-token (Phases 2 + 4B)
     auth_identity.py       POST /auth/resolve-identity — upstream token → identity (Phase 4A)
     mcp_gateway_state.py   /mcp-gateway/state/* — Phase 3 multi-replica gateway state
-    legacy.py              Legacy single-shot /chat endpoint + /index (admin)
+    admin.py               POST /index (admin) — bulk RAG ingestion behind allow_index_endpoint
+    diagnostics.py         GET /health — readiness check
 ```
 
 ## Embedding orchid-api in your own FastAPI app
