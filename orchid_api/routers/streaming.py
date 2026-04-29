@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -22,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from orchid_ai.config.schema import OrchidAgentsConfig
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.observability import OrchidMetricsHandler
 from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
@@ -38,6 +41,7 @@ from ._helpers import auto_title_if_first_message, prepare_graph_state
 from ._stream_buffer import BufferedToken, SupervisorTokenBuffer
 
 logger = logging.getLogger(__name__)
+perf_logger = logging.getLogger("orchid.perf")
 
 router = APIRouter(prefix="/chats", tags=["streaming"])
 
@@ -74,6 +78,17 @@ async def stream_chat_message(
     Uses LangGraph's ``astream(stream_mode="messages")`` to yield
     tokens incrementally from the supervisor synthesis step.
     """
+    request_id = uuid.uuid4().hex[:8]
+    request_start = time.perf_counter()
+    perf_logger.info(
+        "[PERF][req=%s][stream] === REQUEST START === chat=%s files=%d msg_len=%d",
+        request_id,
+        chat_id[:8],
+        len(files),
+        len(message),
+    )
+
+    prep_start = time.perf_counter()
     prepared = await prepare_graph_state(
         chat_id,
         message,
@@ -84,6 +99,8 @@ async def stream_chat_message(
         runtime=runtime,
         mcp_token_store=mcp_token_store,
     )
+    prep_elapsed = (time.perf_counter() - prep_start) * 1000
+    perf_logger.info("[PERF][req=%s][stream] prepare_graph_state took %.1f ms", request_id, prep_elapsed)
 
     # Per-request streaming state
     seen_agents: set[str] = set()
@@ -91,10 +108,16 @@ async def stream_chat_message(
     agents_done: bool = False  # True after any agent has returned to supervisor
     full_response_parts: list[str] = []
     buffer = SupervisorTokenBuffer()
+    metrics = OrchidMetricsHandler()
+    first_token_at: list[float | None] = [None]  # mutable cell for closure
 
     def emit(event: BufferedToken) -> str:
         """Emit a BufferedToken as SSE; track it for final persistence."""
         if event.kind == "token":
+            if first_token_at[0] is None:
+                first_token_at[0] = time.perf_counter()
+                ttft = (first_token_at[0] - request_start) * 1000
+                perf_logger.info("[PERF][req=%s][stream] TTFT (time-to-first-token) = %.1f ms", request_id, ttft)
             full_response_parts.append(event.content)
         return _sse({"type": event.kind, "content": event.content})
 
@@ -114,12 +137,16 @@ async def stream_chat_message(
         nonlocal agents_done
 
         try:
-            graph_config = {"configurable": {"thread_id": chat_id}}
+            graph_config = {
+                "configurable": {"thread_id": chat_id, "request_id": request_id},
+                "callbacks": [metrics],
+            }
             # ``direct_final`` captures the supervisor's direct response
             # (when it answers without dispatching agents) from the
             # ``values`` stream — those messages aren't emitted as
             # incremental tokens so we need state-level access.
             direct_final: str | None = None
+            graph_start = time.perf_counter()
             async for mode, payload in graph.astream(
                 prepared.initial_state,
                 config=graph_config,
@@ -208,17 +235,30 @@ async def stream_chat_message(
             for ev in buffer.flush_as_tokens():
                 yield emit(ev)
 
-            # ── Direct-response fallback ─────────────────────────
-            # When the supervisor answers directly (no agents dispatched),
-            # ``final_response`` is set synchronously without streamed
-            # tokens.  The ``values`` stream surfaces it so we emit
-            # it as a single token event for the client UI to render.
-            if not full_response_parts and not seen_agents and direct_final:
+            # ── Direct-response / skipped-synthesis fallback ────
+            # ``final_response`` is set synchronously by the supervisor
+            # in two cases — both arrive via the ``values`` stream
+            # without producing streamed tokens, so we emit it as a
+            # single token event for the client UI to render:
+            #
+            #   1. Direct response: supervisor answered without
+            #      dispatching any agents (greeting / general question).
+            #   2. Single-agent fast path: exactly one agent ran and
+            #      produced final text, the supervisor skipped its
+            #      synthesis LLM call and returned the agent's text
+            #      directly (saves ~5–15 s per request).
+            #
+            # The condition is "no streamed tokens accumulated AND we
+            # captured a final from values" — independent of whether
+            # an agent ran.
+            if not full_response_parts and direct_final:
                 yield emit(BufferedToken(kind="token", content=direct_final))
 
         except Exception as exc:
             logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
             yield _sse({"type": "error", "message": "An error occurred while processing your request."})
+
+        graph_elapsed = (time.perf_counter() - graph_start) * 1000
 
         # ── Final event with complete metadata ──
         full_response = "".join(full_response_parts) or "No response generated."
@@ -236,12 +276,53 @@ async def stream_chat_message(
         )
 
         # ── Persist after streaming completes ──
+        persist_start = time.perf_counter()
         try:
             await chat_repo.add_message(chat_id, "user", prepared.message)
             await chat_repo.add_message(chat_id, "assistant", full_response, agents_used=agents_used)
             await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
         except Exception as exc:
             logger.error("[Stream] Persistence error: %s", exc, exc_info=True)
+        persist_elapsed = (time.perf_counter() - persist_start) * 1000
+
+        total_elapsed = (time.perf_counter() - request_start) * 1000
+        m = metrics.get_metrics()
+        perf_logger.info(
+            "[PERF][req=%s][stream] graph.astream took %.1f ms | persist=%.1f ms | total=%.1f ms",
+            request_id,
+            graph_elapsed,
+            persist_elapsed,
+            total_elapsed,
+        )
+        perf_logger.info(
+            "[PERF][req=%s][stream] LLM stats: calls=%d errors=%d avg_latency=%.3fs total_tokens=%d (prompt=%d completion=%d)",
+            request_id,
+            m["llm_calls"],
+            m["llm_errors"],
+            m["avg_llm_latency_s"],
+            m["total_tokens"],
+            m["prompt_tokens"],
+            m["completion_tokens"],
+        )
+        perf_logger.info(
+            "[PERF][req=%s][stream] Tool stats: tool_calls=%d retries=%d",
+            request_id,
+            m["tool_calls"],
+            m["retries"],
+        )
+        if m["agent_latencies_s"]:
+            perf_logger.info(
+                "[PERF][req=%s][stream] Agent latencies (avg s): %s | call_counts: %s",
+                request_id,
+                m["agent_latencies_s"],
+                m["agent_call_counts"],
+            )
+        perf_logger.info(
+            "[PERF][req=%s][stream] === REQUEST END === total=%.1f ms agents=%s",
+            request_id,
+            total_elapsed,
+            agents_used,
+        )
 
     return StreamingResponse(
         event_generator(),
