@@ -246,6 +246,7 @@ async def upload_documents(
     from orchid_ai.core.repository import OrchidVectorWriter
     from orchid_ai.documents.chunker import ChunkConfig
     from orchid_ai.documents.pipeline import ingest_document
+    from orchid_ai.documents.strategies import RecursiveIngestion
     from orchid_ai.rag.scopes import OrchidRAGScope
 
     reader = runtime.get_reader()
@@ -260,9 +261,11 @@ async def upload_documents(
         user_id=auth.user_id,
         chat_id=chat_id,
     )
-    chunk_config = ChunkConfig(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
+    ingestion = RecursiveIngestion(
+        ChunkConfig(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        )
     )
 
     max_bytes = settings.upload_max_size_mb * 1024 * 1024
@@ -293,7 +296,7 @@ async def upload_documents(
                 scope=scope,
                 namespace=settings.upload_namespace,
                 writer=reader,
-                chunk_config=chunk_config,
+                ingestion=ingestion,
                 vision_model=settings.vision_model or settings.litellm_model,
             )
             results.append(UploadFileResult(filename=safe_name, chunks_indexed=chunks))
