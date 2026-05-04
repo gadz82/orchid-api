@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.4.0 (2026-05-04)
+
+### Features
+
+- Add SSE handling for mini-agent lifecycle events and token stream suppression
+  ([`46e61eb`](https://github.com/gadz82/orchid-api/commit/46e61eb7f86dad58f6d11203a9af86560b3013b6))
+
+- Bump orchid-ai dependency to >=1.5.0 in API
+  ([`c28e710`](https://github.com/gadz82/orchid-api/commit/c28e7105c8b3827000762eef35e9133cf1fa3195))
+
+
 ## v1.3.0 (2026-04-29)
 
 ### Bug Fixes
