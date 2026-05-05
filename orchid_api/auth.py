@@ -1,4 +1,4 @@
-"""Authentication dependency (ADR-010)."""
+"""Authentication dependency."""
 
 from __future__ import annotations
 

@@ -1,8 +1,7 @@
 """``/mcp-gateway/state/*`` — shared OAuth-state store for the
 inbound MCP gateway.
 
-Phase 3 of the auth-centralisation roadmap.  An MCP gateway
-(``orchid-mcp``) in any of the three previous phases kept its DCR
+Without this router an MCP gateway (``orchid-mcp``) keeps its DCR
 client registrations, pending authorization codes, and issued
 access + refresh tokens in memory or in a local JSON file.  Both
 strategies are single-replica by construction: two gateway replicas
@@ -202,9 +201,9 @@ class GatewayTokenDTO(BaseModel):
     identity: dict[str, Any]
     scopes: list[str]
     expires_at: float
-    # Phase 4 upstream-token columns — see core dataclass.  Defaults
-    # keep the DTO backwards-compatible with downstream gateways
-    # that haven't rolled their zod schema forward yet.
+    # Upstream-token columns — see core dataclass.  Defaults keep
+    # the DTO backwards-compatible with downstream gateways that
+    # haven't rolled their zod schema forward yet.
     idp_access_token: str = ""
     idp_refresh_token: str = ""
     idp_expires_at: float = 0.0

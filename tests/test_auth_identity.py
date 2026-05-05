@@ -1,4 +1,4 @@
-"""Tests for ``orchid_api.routers.auth_identity`` — Phase 4 upstream
+"""Tests for ``orchid_api.routers.auth_identity`` — upstream
 identity-bridge proxy.
 """
 

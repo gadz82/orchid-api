@@ -1,18 +1,18 @@
 """``POST /auth/resolve-identity`` — server-side proxy for the
 upstream identity bridge.
 
-Rationale (Phase 4 boundary).  In Phase 1 / 2 / 3 the MCP gateway
-still held one piece of upstream config the rest of orchid-api
-didn't: the userinfo endpoint URL + JSON-path hints for non-OIDC
-shapes (e.g. wrapped ``data.user_id`` payloads).  Whenever a user
-completed the OAuth dance the gateway hit the upstream
-``userinfo_endpoint`` itself to build an :type:`OrchidIdentity`.
-That split the identity-extraction logic across the gateway and
-any custom scripted resolver the operator wrote, and required the
-gateway to know tenant-shape details the rest of the stack already
-knew.
+Rationale.  Without this endpoint the MCP gateway would hold one
+piece of upstream config the rest of orchid-api doesn't: the
+userinfo endpoint URL + JSON-path hints for non-OIDC shapes (e.g.
+wrapped ``data.user_id`` payloads).  The gateway would hit the
+upstream ``userinfo_endpoint`` itself to build an
+:type:`OrchidIdentity` whenever a user completed the OAuth dance.
+That would split identity-extraction logic across the gateway and
+any custom scripted resolver the operator wrote, and would require
+the gateway to know tenant-shape details the rest of the stack
+already knows.
 
-Phase 4 exposes the existing :class:`OrchidIdentityResolver`
+This endpoint exposes the existing :class:`OrchidIdentityResolver`
 (already wired into :attr:`AppContext.identity_resolver`) over an
 HTTP endpoint.  Downstream OAuth clients POST the raw upstream
 access token and get back a normalised identity payload.  The
@@ -56,7 +56,7 @@ class ResolveIdentityRequest(BaseModel):
     ``access_token`` is the raw upstream access token (OAuth2
     bearer) obtained via the authorization-code dance.  The
     downstream consumer typically received it either directly from
-    the upstream ``token_endpoint`` or (Phase 2) from
+    the upstream ``token_endpoint`` or from
     :mod:`orchid_api.routers.auth_exchange`.
 
     ``auth_domain`` lets a multi-tenant operator override the

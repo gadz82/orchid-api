@@ -2,14 +2,14 @@
 secret-bearing proxies for the upstream-OAuth authorization-code
 and refresh-token grant types.
 
-Rationale (Phase 2 + Phase 4 boundaries).  Downstream OAuth clients
-(the MCP gateway and Next.js frontends) used to hold their own
+Rationale.  Without these endpoints, downstream OAuth clients
+(the MCP gateway and Next.js frontends) would each hold their own
 copy of ``client_secret`` so they could exchange authorization
-codes (Phase 1) and refresh tokens (pre-Phase-4) with the upstream
-IdP directly.  That scattered the secret across three places.
-Centralising both grant types here means the secret exists in
-exactly one process (orchid-api), and every other component runs as
-a public PKCE client.
+codes and refresh tokens with the upstream IdP directly.  That
+would scatter the secret across three places.  Centralising both
+grant types here means the secret exists in exactly one process
+(orchid-api), and every other component runs as a public PKCE
+client.
 
 The endpoints are deliberately **unauthenticated** — their
 protection relies on the natural guards already present in the

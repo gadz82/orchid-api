@@ -1,5 +1,5 @@
 """
-FastAPI entry point — the ONLY place where identity resolution happens (ADR-010).
+FastAPI entry point — the ONLY place where identity resolution happens.
 
 Endpoints:
   POST /chats                     — create a new chat session

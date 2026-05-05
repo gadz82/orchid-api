@@ -4,7 +4,7 @@
 
 <h1 align="center">Orchid API</h1>
 
-FastAPI server for the [Orchid](../orchid/) multi-agent AI framework.
+FastAPI server for the [Orchid](https://github.com/gadz82/orchid) multi-agent AI framework.
 
 Provides HTTP endpoints for chat management, streamed message handling, document uploads, RAG sharing, MCP gateway state, and identity bridging. This is a thin HTTP layer — all agent logic, graph building, and persistence live in the `orchid` library.
 
@@ -76,10 +76,10 @@ docker compose -f docker-compose.demo.yml up --build
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/auth-info` | Public posture + upstream-OAuth discovery (Phase 1) |
-| `POST` | `/auth/exchange-code` | Server-side authorization-code exchange (Phase 2) |
-| `POST` | `/auth/refresh-token` | Server-side refresh-token exchange (Phase 4B) |
-| `POST` | `/auth/resolve-identity` | Identity bridge — upstream token → `OrchidAuthContext` (Phase 4A) |
+| `GET` | `/auth-info` | Public posture + upstream-OAuth discovery |
+| `POST` | `/auth/exchange-code` | Server-side authorization-code exchange |
+| `POST` | `/auth/refresh-token` | Server-side refresh-token exchange |
+| `POST` | `/auth/resolve-identity` | Identity bridge — upstream token → `OrchidAuthContext` |
 
 These four endpoints let downstream OAuth clients (the MCP gateway, Next.js frontends) drop their copy of `client_secret` + userinfo URL + JSON-path hints. All four are unauthenticated — protected by PKCE, single-use codes, or the upstream token itself, none of which leak from the client.
 

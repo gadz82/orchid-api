@@ -1,4 +1,4 @@
-"""Tests for ``orchid_api.routers.mcp_gateway_state`` — Phase 3 shared
+"""Tests for ``orchid_api.routers.mcp_gateway_state`` — the shared
 OAuth-state store for the inbound MCP gateway.
 
 Coverage breaks into three slices:

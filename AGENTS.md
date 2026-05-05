@@ -12,7 +12,7 @@ orchid-api/
     main.py          FastAPI app + lifespan + router include + plugin discovery
     settings.py      Pydantic BaseSettings + YAML overlay via _apply_yaml_config()
     context.py       AppContext dataclass (singleton, populated at startup)
-    auth.py          Bearer token -> OrchidAuthContext via pluggable OrchidIdentityResolver (ADR-010)
+    auth.py          Bearer token -> OrchidAuthContext via pluggable OrchidIdentityResolver
     models.py        Pydantic response models (incl. InterruptResponse)
     tracing.py       LangSmith setup
     mcp_gateway.py   Resolves OrchidMCPGatewayConfig (env-var overrides + YAML)
@@ -20,17 +20,17 @@ orchid-api/
     routers/
       chats.py               CRUD: create, list, delete chat sessions
       messages.py            Send messages + document upload (multipart/form-data)
-      streaming.py           SSE-streamed message send (Phase 9)
+      streaming.py           SSE-streamed message send
       resume.py              Resume after HITL approval pause
       session.py             POST /session/warm — per-user MCP capability warm-up
       sharing.py             Promote chat RAG data to user-common scope
       mcp_auth.py            Outbound MCP per-server OAuth: list/authorize/callback/revoke
                               (callback also warms the just-authorized server)
       mcp_gateway.py         /mcp-gateway/config — gateway exposure overrides
-      auth_info.py           /auth-info — public posture + upstream-OAuth discovery (Phase 1)
-      auth_exchange.py       /auth/exchange-code + /auth/refresh-token (Phases 2 + 4B)
-      auth_identity.py       /auth/resolve-identity — identity bridge (Phase 4A)
-      mcp_gateway_state.py   /mcp-gateway/state/* — Phase 3 multi-replica gateway state
+      auth_info.py           /auth-info — public posture + upstream-OAuth discovery
+      auth_exchange.py       /auth/exchange-code + /auth/refresh-token
+      auth_identity.py       /auth/resolve-identity — identity bridge
+      mcp_gateway_state.py   /mcp-gateway/state/* — multi-replica gateway state
   pyproject.toml
 ```
 
@@ -50,7 +50,7 @@ orchid-api/
 
 1. **This is a thin HTTP layer.** Business logic belongs in `orchid/`, not here. Routers call `orchid` APIs and return responses.
 
-2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `OrchidAuthContext`. No other code initiates OAuth flows (ADR-010).
+2. **Identity resolution happens ONCE in `auth.py`.** The `get_auth_context` dependency resolves the Bearer token into `OrchidAuthContext`. No other code initiates OAuth flows.
 
 3. **`AppContext` owns a single `Orchid` handle.** `context.py:app_ctx.orchid` is the framework's mandatory :class:`orchid_ai.Orchid` facade, created by `lifecycle.setup_orchid()`. Top-level helpers (`runtime`, `graph`, `chat_repo`, `mcp_token_store`, `agents_config`) are **read-through properties** that delegate to `app_ctx.orchid`, so FastAPI deps (`get_runtime`, `get_graph`, `get_chat_repo`, …) keep their existing contract. The only flat fields are adapter-specific concerns that don't belong inside the framework library: `http_client`, `identity_resolver`, `oauth_state_store`. Routers access everything via `from ..context import app_ctx`.
 
@@ -69,9 +69,9 @@ orchid-api/
 All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CONFIG`. The full matrix is in `README.md`; the high-level groups are:
 
 - **Core** — `LITELLM_MODEL`, `AGENTS_CONFIG_PATH`, `VECTOR_BACKEND`, `QDRANT_URL`, `EMBEDDING_MODEL`, `CHAT_STORAGE_CLASS`, `CHAT_DB_DSN`, `CHAT_EXTRA_MIGRATIONS_PACKAGE`, `STARTUP_HOOK`, `API_BASE_URL`, `LANGSMITH_*`.
-- **Auth (consumer-pluggable)** — `IDENTITY_RESOLVER_CLASS` (Phase 4A — also powers `/auth/resolve-identity`), `AUTH_DOMAIN`, `AUTH_CONFIG_PROVIDER_CLASS` (Phase 1), `AUTH_EXCHANGE_CLIENT_CLASS` (Phases 2 + 4B), `AUTH_OAUTH_CLIENT_ID_ENV`, `AUTH_OAUTH_SCOPE`, `DEV_AUTH_BYPASS`.
+- **Auth (consumer-pluggable)** — `IDENTITY_RESOLVER_CLASS` (also powers `/auth/resolve-identity`), `AUTH_DOMAIN`, `AUTH_CONFIG_PROVIDER_CLASS`, `AUTH_EXCHANGE_CLIENT_CLASS`, `AUTH_OAUTH_CLIENT_ID_ENV`, `AUTH_OAUTH_SCOPE`, `DEV_AUTH_BYPASS`.
 - **Outbound MCP** — `MCP_TOKEN_STORE_CLASS`, `MCP_TOKEN_STORE_DSN`, `MCP_CLIENT_REGISTRATION_STORE_CLASS`, `MCP_CLIENT_REGISTRATION_STORE_DSN`, `OAUTH_STATE_STORE_CLASS`, `OAUTH_STATE_TTL_SECONDS`.
-- **Inbound gateway state (Phase 3)** — `MCP_GATEWAY_STATE_STORE_CLASS`, `MCP_GATEWAY_STATE_STORE_DSN`, `MCP_GATEWAY_STATE_SERVICE_TOKEN` (empty disables `/mcp-gateway/state/*`).
+- **Inbound gateway state** — `MCP_GATEWAY_STATE_STORE_CLASS`, `MCP_GATEWAY_STATE_STORE_DSN`, `MCP_GATEWAY_STATE_SERVICE_TOKEN` (empty disables `/mcp-gateway/state/*`).
 
 ## Running
 
@@ -110,16 +110,16 @@ Outbound MCP OAuth (per-user external-server tokens):
 | GET | `/mcp/auth/callback` | mcp_auth | OAuth IdP redirect callback |
 | DELETE | `/mcp/auth/servers/{name}/token` | mcp_auth | Revoke stored OAuth token |
 
-Inbound auth centralisation (Phases 1–5 — see [.knowledge/auth-centralisation.md](../.knowledge/auth-centralisation.md)):
+Inbound auth centralisation:
 
-| Method | Path | Router | Phase | Purpose |
-|--------|------|--------|-------|---------|
-| GET | `/auth-info` | auth_info | 1 | Public posture + upstream-OAuth discovery |
-| POST | `/auth/exchange-code` | auth_exchange | 2 | Server-side authorization-code exchange |
-| POST | `/auth/refresh-token` | auth_exchange | 4B | Server-side refresh-token exchange |
-| POST | `/auth/resolve-identity` | auth_identity | 4A | Upstream token → `OrchidAuthContext` |
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
+| GET | `/auth-info` | auth_info | Public posture + upstream-OAuth discovery |
+| POST | `/auth/exchange-code` | auth_exchange | Server-side authorization-code exchange |
+| POST | `/auth/refresh-token` | auth_exchange | Server-side refresh-token exchange |
+| POST | `/auth/resolve-identity` | auth_identity | Upstream token → `OrchidAuthContext` |
 
-Inbound MCP gateway state (Phase 3, gated by `MCP_GATEWAY_STATE_SERVICE_TOKEN`):
+Inbound MCP gateway state (gated by `MCP_GATEWAY_STATE_SERVICE_TOKEN`):
 
 | Method | Path | Router | Purpose |
 |--------|------|--------|---------|
