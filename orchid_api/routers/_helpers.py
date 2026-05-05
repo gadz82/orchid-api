@@ -124,12 +124,15 @@ async def process_uploaded_files(
 
     from orchid_ai.documents.chunker import ChunkConfig
     from orchid_ai.documents.pipeline import extract_text, ingest_document
+    from orchid_ai.documents.strategies import RecursiveIngestion
     from orchid_ai.rag.scopes import OrchidRAGScope
 
     can_ingest = isinstance(reader, OrchidVectorWriter)
-    chunk_config = ChunkConfig(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
+    ingestion = RecursiveIngestion(
+        ChunkConfig(
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        )
     )
     scope = OrchidRAGScope(
         tenant_id=auth.tenant_key,
@@ -164,7 +167,7 @@ async def process_uploaded_files(
                     scope=scope,
                     namespace=settings.upload_namespace,
                     writer=reader,
-                    chunk_config=chunk_config,
+                    ingestion=ingestion,
                     pre_extracted_text=extracted_text,
                 )
         except Exception as exc:
