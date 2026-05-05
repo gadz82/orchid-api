@@ -255,7 +255,8 @@ class TestAuthInfoEndpoint:
     @pytest.mark.asyncio
     async def test_exchange_via_api_false_when_provider_opts_out(self, reset_app_ctx):
         """Even with a wired exchange client, a provider can set
-        ``exchange_via_api=False`` to keep Phase 1 behaviour.
+        ``exchange_via_api=False`` to keep legacy direct-exchange
+        behaviour.
         """
 
         class _StubExchange:
@@ -302,10 +303,10 @@ class TestAuthInfoEndpoint:
 
     @pytest.mark.asyncio
     async def test_resolve_via_api_true_only_when_resolver_wired(self, reset_app_ctx):
-        """Phase 4 parallel of ``exchange_via_api``: the provider
-        claims the feature, but without an :class:`OrchidIdentityResolver`
-        the ``/auth/resolve-identity`` endpoint would 503.  Gate the
-        flag off in that case so downstream doesn't get a surprise.
+        """Parallel of ``exchange_via_api``: the provider claims the
+        feature, but without an :class:`OrchidIdentityResolver` the
+        ``/auth/resolve-identity`` endpoint would 503.  Gate the flag
+        off in that case so downstream doesn't get a surprise.
         """
         settings = Settings(dev_auth_bypass=False)
         app_ctx.identity_resolver = None

@@ -97,7 +97,7 @@ async def stream_supervisor_tokens(
                 msg, metadata = payload
                 node = metadata.get("langgraph_node", "")
 
-                # ── Phase B: mini-agent lifecycle events ────────
+                # ── mini-agent lifecycle events ────────
                 # Translate ``mini_agent.*`` SystemMessages into SSE
                 # frames before any other processing — they are
                 # invisible to the user-visible synthesis stream and
@@ -108,12 +108,12 @@ async def stream_supervisor_tokens(
                     yield sse_event({"type": event_name, **event_data})
                     continue
 
-                # ── Phase B: suppress per-mini token streams by default ──
+                # ── suppress per-mini token streams by default ──
                 # ``mini_agent.stream_inner_tokens=true`` (opt-in) is
                 # not yet wired here — the default ``false`` semantics
-                # (spec §13) is implemented as: drop every chunk
-                # produced by a ``*_mini`` node so the user-visible
-                # synthesis stream stays clean.
+                # is implemented as: drop every chunk produced by a
+                # ``*_mini`` node so the user-visible synthesis stream
+                # stays clean.
                 if node.endswith("_mini") or node.endswith("_aggregator"):
                     continue
 

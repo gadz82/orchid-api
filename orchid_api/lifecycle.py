@@ -110,7 +110,7 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     else:
         app_ctx.auth_config_provider = None
 
-    # ── Auth-exchange client (optional — Phase 2 code exchange proxy) ──
+    # ── Auth-exchange client (optional — code exchange proxy) ──
     # When wired, ``POST /auth/exchange-code`` delegates to this client,
     # which holds the upstream ``client_secret`` and performs the
     # authorization-code exchange against the IdP.  Downstream OAuth

@@ -87,20 +87,20 @@ class AuthInfoOAuth(BaseModel):
     # When True, downstream OAuth clients should POST the upstream
     # authorization code to orchid-api's ``/auth/exchange-code``
     # instead of exchanging directly with the IdP — the
-    # ``client_secret`` lives only on orchid-api (Phase 2 boundary).
+    # ``client_secret`` lives only on orchid-api.
     exchange_via_api: bool = False
     # When True, downstream OAuth clients should POST the upstream
     # access token to orchid-api's ``/auth/resolve-identity`` instead
     # of hitting the upstream ``userinfo_endpoint`` themselves.  The
     # gateway then drops its own ``userinfo_endpoint`` + JSON-path
     # hint configuration — orchid-api's already-wired identity
-    # resolver does the work (Phase 4 boundary).
+    # resolver does the work.
     resolve_via_api: bool = False
     # When True, orchid-api exposes ``POST /auth/refresh-token`` as
     # the refresh-grant equivalent of ``/auth/exchange-code``.  The
     # downstream consumer presents its upstream ``refresh_token`` and
     # orchid-api performs the upstream exchange with the
-    # ``client_secret`` it holds.  Phase 4 complement to
+    # ``client_secret`` it holds.  Complement to
     # :attr:`exchange_via_api` — when both are enabled the downstream
     # gateway never hits the upstream ``token_endpoint`` directly.
     refresh_via_api: bool = False
@@ -173,7 +173,7 @@ async def get_auth_info(
                 # dev-bypass deployment has no resolver, so the
                 # endpoint would 503.
                 resolve_via_api=(resolved.resolve_via_api and app_ctx.identity_resolver is not None),
-                # Phase 4 refresh flag gates on **three** conditions:
+                # Refresh flag gates on **three** conditions:
                 # provider opted in, exchange client wired, AND the
                 # wired client's class actually overrides
                 # ``refresh_token``.  Without the third check we'd

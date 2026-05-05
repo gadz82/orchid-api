@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # secret-bearing upstream-OAuth exchange on behalf of downstream
     # OAuth clients.  Lets the MCP gateway and Next.js frontends run
     # as public PKCE-only clients without holding ``client_secret``
-    # themselves.  Phase 2 boundary in the auth-centralisation roadmap.
+    # themselves.
     auth_exchange_client_class: str = ""
     # Name of the env var that holds the PUBLIC upstream-OAuth
     # ``client_id``.  The provider reads the env var named here at
@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # ``.env`` file is sufficient.
     litellm_model: str = "ollama/llama3.2"
 
-    # ── Agent config (ADR-016) ──────────────────────────────────
+    # ── Agent config ──────────────────────────────────
     agents_config_path: str = "agents.yaml"
 
     # ── Vector DB ─────────────────────────────────────────────
@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     )
     mcp_client_registration_store_dsn: str = "~/.orchid/chats.db"
 
-    # ── MCP gateway-state store (Phase 3 — INBOUND MCP OAuth) ────
+    # ── MCP gateway-state store (INBOUND MCP OAuth) ────
     # Holds DCR registrations, pending auth codes, and issued
     # access/refresh tokens for the orchid-mcp gateway.  Shared
     # across replicas so multi-instance gateway deployments don't

@@ -1,10 +1,10 @@
-"""Tests for the mini-agent SSE event surface (Phase B / B8 / §16 T18).
+"""Tests for the mini-agent SSE event surface.
 
 Drives :func:`stream_supervisor_tokens` directly with a hand-crafted
 async generator that yields the four ``mini_agent.*`` SystemMessages
 (plus a normal supervisor synthesis token) and asserts that every
 event fires in order, suppressed mini chunks don't leak, and the
-shape of each SSE payload matches the spec §13 contract.
+shape of each SSE payload matches the streaming contract.
 """
 
 from __future__ import annotations

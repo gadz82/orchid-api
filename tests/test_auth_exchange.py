@@ -1,5 +1,5 @@
-"""Tests for ``orchid_api.routers.auth_exchange`` — the Phase 2
-server-side OAuth code exchange proxy.
+"""Tests for ``orchid_api.routers.auth_exchange`` — the server-side
+OAuth code exchange proxy.
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ class TestExchangeCodeRequestValidation:
             ExchangeCodeRequest(code="", redirect_uri="http://cb")
 
 
-# ── Phase 4: /auth/refresh-token ───────────────────────────────
+# ── /auth/refresh-token ───────────────────────────────
 
 
 class TestRefreshTokenEndpoint:
