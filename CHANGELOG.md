@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-05-05)
+
+### Chores
+
+- Bump `orchid-ai` dependency to >=1.6.0 in `orchid-cli` and `orchid-api`
+  ([`83fd76d`](https://github.com/gadz82/orchid-api/commit/83fd76df4e1e1a00a3c5369d3f0e7a7c86a2a63d))
+
+### Documentation
+
+- Update Orchid API and MCP gateway README
+  ([`c7cd503`](https://github.com/gadz82/orchid-api/commit/c7cd503198b6b1d5f4f67cfa92fa37af11a73606))
+
+### Features
+
+- Integrate RecursiveIngestion for chunk processing in document ingestion tasks
+  ([`8c45ae3`](https://github.com/gadz82/orchid-api/commit/8c45ae37a4151802efa659295f528647fa4a0e4f))
+
+
 ## v1.4.0 (2026-05-04)
 
 ### Features
