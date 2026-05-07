@@ -31,15 +31,20 @@ from .routers import (
     auth_exchange,
     auth_identity,
     auth_info,
+    chat_events,
     chats,
     diagnostics,
+    jobs,
     mcp_auth,
     mcp_gateway,
     mcp_gateway_state,
     messages,
     resume,
+    runs,
+    schedules,
     session,
     sharing,
+    signals,
     streaming,
 )
 from .settings import get_settings
@@ -148,6 +153,32 @@ app.include_router(session.router)
 app.include_router(streaming.router)
 app.include_router(diagnostics.router)
 app.include_router(admin.router)
+# Pollen + Bloom routers — return 503 from each endpoint when
+# ``events.enabled: false`` (the default).  Mounting them
+# unconditionally keeps the app schema stable across config flips.
+app.include_router(signals.router)
+app.include_router(jobs.router)
+app.include_router(runs.router)
+app.include_router(schedules.router)
+app.include_router(chat_events.router)
+
+
+# ── HTTPIngestionProducer router (mounted dynamically) ───
+# When ``events.enabled: true`` the lifespan builds an
+# :class:`HTTPIngestionProducer` and its router is included into the
+# app via the helper below.  We mount eagerly via a startup hook
+# (BEFORE the first request) so the route is visible in the OpenAPI
+# schema and to test clients immediately after startup.
+@app.on_event("startup")
+async def _mount_ingestion_router() -> None:  # pragma: no cover - runtime hook
+    from .context import app_ctx
+
+    runtime = app_ctx.events
+    if runtime is None or not getattr(runtime, "enabled", False):
+        return
+    if runtime.http_producer is None:
+        return
+    app.include_router(runtime.http_producer.router, tags=["events"])
 
 
 # ── Plugin router discovery ────────────────────────────────
