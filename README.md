@@ -20,6 +20,7 @@ Provides HTTP endpoints for chat management, streamed message handling, document
 - **MCP gateway state** — server-backed DCR client / auth-code / token store so orchid-mcp can run multi-replica.
 - **MCP gateway exposure** — serves `OrchidMCPGatewayConfig` (tool/prompt overrides) consumed by orchid-mcp.
 - **Outbound MCP per-server OAuth** — each user authorises each MCP server independently; tokens stored in `OrchidMCPTokenStore`.
+- **Pollen + Bloom event endpoints** — webhook ingestion (`/signals/...`), run management (`/runs/...`), trigger / schedule introspection, in-chat Bloom event streaming. Activated when `events.enabled: true` in `agents.yaml`; otherwise the routers return 503.
 - **LangSmith tracing** + CORS for browser frontends.
 
 ## Installation
@@ -111,6 +112,51 @@ These nine endpoints are gated by a shared service token (`MCP_GATEWAY_STATE_SER
 |--------|------|---------|
 | `GET` | `/mcp-gateway/config` | Tool title/description overrides + MCP Prompts (consumed by orchid-mcp at session init) |
 
+### Pollen + Bloom — events surface
+
+These endpoints exist only when `events.enabled: true` in `agents.yaml`; otherwise the routers return 503 and `/health` flags the events runtime as `disabled`. **Visibility (§26) is enforced upstream of every read** — cross-tenant requests always 404 (never 403); admin-role bearers see tenant-wide rows that their visibility level allows.
+
+Per-id endpoints honour a strict **404-never-403** contract: when a row exists but the caller's visibility doesn't grant access, the response is `404` (not `403`) so existence isn't leaked. Endpoints flagged **admin-only** require the resolved `OrchidAuthContext.roles` to include `"admin"`.
+
+#### Pollen — signal ingestion
+
+Webhook ingest is mounted by the `HTTPIngestionProducer` at the path declared in its `mount:` arg (default `/signals`). Three well-known headers are honoured: `X-Orchid-Source` (must match a registered `events.ingestion.sources[].id`), `X-Orchid-Signature` (consumed by HMAC validators, computed against the **raw body**), and `Idempotency-Key` (overrides the per-source `dedupe_key`). Body must shape onto a `SignalEnvelope`; max body 1 MB by default. Successful ingest returns `202 Accepted` with `{signal_id, deduplicated}`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `<HTTPIngestionProducer.mount>` (default `/signals`) | **Webhook ingest.** Validators registered per source. Lazy FastAPI router — `orchid-api` only exposes it when the `HTTPIngestionProducer` is in `events.producers[]`. |
+| `GET`  | `/signals` | **Admin-only.** List recent signals; filters: `?type=`, `?source=`, `?since=` (ISO-8601), `?limit=` (1..1000) |
+| `GET`  | `/signals/{signal_id}` | Fetch a single signal envelope (visibility-filtered, 404-never-403) |
+| `POST` | `/signals/{signal_id}/replay` | **Admin-only.** Re-enqueue an existing signal — produces fresh `JobRun` rows with `attempt_number + 1` |
+
+#### Bloom — run management
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET`  | `/runs` | List recent `JobRun` rows visible to the caller; filters: `?status=`, `?trigger_id=`, `?since=`, `?limit=` |
+| `GET`  | `/runs/{run_id}` | Fetch a single run (includes `result` payload when finished; 404-never-403) |
+| `GET`  | `/runs/{run_id}/stream` | **SSE** — `bloom.*` events for this run (closes after `bloom.run.finished` or idle timeout, default 5 min) |
+| `POST` | `/runs/{run_id}/cancel` | Best-effort cancel — flips the row to `cancelled`. In-flight Blooms continue to completion (v1) |
+| `POST` | `/runs/{run_id}/retry` | Force a fresh attempt — re-enqueues the originating signal so the processor produces a new `JobRun` with `attempt_number + 1` |
+
+#### Triggers + schedules — introspection
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET`   | `/jobs` | List declared triggers (`events.triggers[]` resolved at boot). Read-only in v1 |
+| `GET`   | `/jobs/{trigger_id}/runs` | List recent `JobRun` rows for a given trigger (visibility-filtered); filters: `?status=`, `?since=`, `?limit=` |
+| `GET`   | `/schedules` | **Admin-only.** List declared schedules (`events.schedules[]`) with `last_fire_at` / `next_fire_at` |
+| `GET`   | `/schedules/{schedule_id}` | **Admin-only.** Fetch one schedule |
+| `PATCH` | `/schedules/{schedule_id}` | **Admin-only.** Toggle `enabled` / change `cron` (rest is YAML-driven) |
+
+#### In-chat Bloom progress
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET`  | `/chats/{chat_id}/events/stream` | **SSE** — `chat.bloom.*` events for chat-bound Blooms in this chat. Owner-or-admin only; cross-tenant always 404 |
+
+The chat-events stream uses the discovery-then-subscribe pattern: on connect, the router lists currently-active runs whose `chat_binding.chat_id` matches and replays an `attached` envelope per run, then forwards live publishes. Slow consumers evict their oldest event rather than block the publisher.
+
 ## Streaming event vocabulary
 
 `POST /chats/{id}/messages/stream` returns Server-Sent Events. Every event is a JSON object on a `data:` line; the relevant `event:` types are:
@@ -130,6 +176,21 @@ These nine endpoints are gated by a shared service token (`MCP_GATEWAY_STATE_SER
 
 A consumer that ignores everything except `assistant.delta` + `assistant.complete` still gets a working chat UI; the other events power richer presentation (mini-agent traces, HITL approval cards, supervisor reasoning pills).
 
+### Bloom event vocabulary (events surface)
+
+`/runs/{run_id}/stream` and `/chats/{chat_id}/events/stream` use the same SSE plumbing as the chat stream above. Two channel families are surfaced:
+
+| Channel | Event | Payload | When emitted |
+|---|---|---|---|
+| `run:{run_id}` | `bloom.run.queued` | `{ "run_id": "...", "trigger_id": "...", "queued_at": "..." }` | Right after the processor inserts the `JobRun` row |
+| `run:{run_id}` | `bloom.run.started` | `{ "run_id": "...", "started_at": "...", "agent": "..." }` | When the runner begins invoking the supervisor |
+| `run:{run_id}` | `bloom.run.finished` | `{ "run_id": "...", "status": "succeeded\|failed\|cancelled", "finished_at": "...", "result": {...}, "error": "..." }` | Terminal — closes the stream |
+| `chat:{chat_id}` | `chat.bloom.attached` | `{ "run_id": "...", "trigger_id": "...", "agent": "...", "source_message_id": "..."? }` | Collapses `bloom.run.queued` + `bloom.run.started` into one envelope; consumer dedupes by `run_id` |
+| `chat:{chat_id}` | `chat.bloom.tick` | `{ "run_id": "...", "kind": "...", "agent": "...", "tool": "...", "status": "...", "message": "..." }` | Redacted progress — no raw tool result bodies |
+| `chat:{chat_id}` | `chat.bloom.finished` | `{ "run_id": "...", "status": "...", "finished_at": "...", "error": "..." }` | Final `AIMessage` flows through the chat-reload path, NOT this event |
+
+The chat-channel publish branch in the processor has its own `try/except` so a chat-channel publish failure never affects the run-channel publish. Non-bound runs publish to the run channel only.
+
 ## Architecture
 
 ```
@@ -142,6 +203,12 @@ orchid_api/
   tracing.py       LangSmith setup
   mcp_gateway.py   Resolves OrchidMCPGatewayConfig from agents.yaml + env overrides
   lifecycle.py     setup_orchid / teardown_orchid for embedding in your own FastAPI app
+  events_bootstrap.py
+                   Re-export of orchid_ai.events.bootstrap (start_events / stop_events /
+                   EventsRuntime) — same wiring helper used by orchid-cli
+  _visibility.py   §26 visibility filter wrappers (require_visible_run /
+                   require_visible_signal / require_chat_owner_or_admin)
+  rate_limit.py    Per-(user, source) signal-ingest token bucket (Pollen)
   routers/
     _helpers.py            Shared: verify_chat_ownership, auto_title_if_first_message,
                             build_interrupt_response, prepare_graph_state
@@ -159,6 +226,11 @@ orchid_api/
     session.py             POST /session/warm — capability-cache warming
     admin.py               POST /index (admin) — bulk RAG ingestion behind allow_index_endpoint
     diagnostics.py         GET /health — readiness check
+    signals.py             Pollen — list / fetch / replay (when events.enabled)
+    runs.py                Bloom — list / fetch / SSE stream / cancel / retry
+    jobs.py                Triggers introspection — list + per-trigger runs
+    schedules.py           Schedules introspection — list / fetch / toggle enabled
+    chat_events.py         GET /chats/{id}/events/stream — chat-bound Bloom progress
 ```
 
 The lifespan runs (in order):
@@ -170,10 +242,11 @@ The lifespan runs (in order):
 5. Initialise the optional checkpointer (required for HITL resume).
 6. Build the MCP token store + client registration store + gateway state store.
 7. Warm `auth.mode: none` MCP servers proactively (`OrchidSessionWarmer`).
-8. Fire any startup hook declared in `orchid.yml` (`startup.hook`).
-9. Discover entry-point routers (`orchid_api.routers` group) and include them.
+8. Build the events runtime via `orchid_ai.events.bootstrap.start_events` (no-op when `events.enabled` is `false`): resolve the `events.store` / `events.queue` / `events.scheduler` / `events.processors` / `events.producers` dotted paths, build the trigger registry from `events.triggers[]` (running the boot-time `act_as_user` mint probe + JMESPath compilation), compile `events.ingestion.sources[]` into `SignalSource` rows, register the events SSE channels, and start each producer + processor in order. The `HTTPIngestionProducer`'s lazy FastAPI router is mounted here.
+9. Fire any startup hook declared in `orchid.yml` (`startup.hook`).
+10. Discover entry-point routers (`orchid_api.routers` group) and include them.
 
-Teardown reverses the order — the chat storage's `close()`, checkpointer pool, and any hook-owned resources (closed by orchid-api's lifespan, not the hook).
+Teardown reverses the order: any hook-owned resources, then `stop_events()` (drain processors + stop producers + close the events store / queue), then the chat storage's `close()`, checkpointer pool, and remaining shared resources. `setup_orchid` / `teardown_orchid` are exported for embedded use — see "Embedding orchid-api in your own FastAPI app" below.
 
 ## Embedding orchid-api in your own FastAPI app
 
@@ -347,6 +420,13 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `MCP_GATEWAY_STATE_STORE_DSN` | `~/.orchid/chats.db` | Gateway-state DSN (defaults to chat DB) |
 | `MCP_GATEWAY_STATE_SERVICE_TOKEN` | — | Shared secret gating `/mcp-gateway/state/*` — empty disables the endpoint group (returns 503) |
 
+### Pollen + Bloom (events)
+
+There are **no API-level env vars** for the events runtime — the full surface is declared in `agents.yaml` under the optional `events:` block (see the [orchid library README](https://github.com/gadz82/orchid#events-pollen--bloom--optional-opt-in) for the full schema). This API only does two things on top of the library's `start_events` helper:
+
+- The lifespan resolves any `secret_ref: env:VAR` references for HMAC / bearer ingestion validators against the API process environment (so secrets stay out of YAML and out of version control).
+- A boot-time warning fires when `events.enabled: true` AND any trigger uses `identity.mode: service_account` AND the configured `OrchidIdentityResolver` does not return any `roles: {"admin"}` mapping. Without an admin-role mapping, service-account run rows are visible to nobody — the warning surfaces the misconfiguration before signals start landing.
+
 **Priority:** env vars > `orchid.yml` > hardcoded defaults.
 
 ## Custom storage backends
@@ -476,6 +556,12 @@ dependency (respects `DEV_AUTH_BYPASS`).
 - **MCP tools missing from agents** — capability cache hasn't warmed. For `auth.mode: none` servers the warm fires at API startup; for `oauth` / `passthrough` servers, the frontend must call `POST /session/warm` (or wait for the lazy backstop on first message).
 - **Streamed events arrive but `assistant.complete` never fires** — typically a downstream tool error. Check `agent.finished` and `tool_call.requires_approval` events for clues; enable `LANGSMITH_TRACING=true` to see the per-step LLM traces.
 - **`/mcp-gateway/state/*` returns 503** — `MCP_GATEWAY_STATE_SERVICE_TOKEN` is empty. Set it (and configure orchid-mcp's matching `ORCHID_MCP_GATEWAY_STATE_SERVICE_TOKEN`) to enable the multi-replica gateway state endpoints.
+- **`/runs`, `/signals`, `/jobs`, `/schedules` return 503** — `events.enabled` is `false` (or the block is missing) in `agents.yaml`. Set `events.enabled: true` and supply at minimum `events.store`, `events.queue`, and one entry under `events.processors`.
+- **`/signals` (list) or `/schedules` returns 404** — the caller's resolved `OrchidAuthContext.roles` does not include `"admin"`. The 404 (not 403) is intentional: existence isn't leaked. Update your `OrchidIdentityResolver` to mint `admin` for the right principals.
+- **Boot fails with `MintingProbeUnsupportedError`** — a trigger declares `identity.mode: act_as_user` but the configured `OrchidIdentityResolver` does not implement `mint_for_user`. Either switch the trigger to `service_account` / `addressed_to_user`, or wire a resolver that mints. The error message names both the trigger id and the resolver class.
+- **`[API] events.enabled=true with a service_account trigger AND no admin role`** in startup logs — the configured resolver never returns `admin` roles, so service-account run rows will be invisible to operators. Add an admin mapping (typically: tenant operators get `roles: {"admin"}`).
+- **Webhook `POST /signals/...` returns 401** — the source's validator (HMAC or bearer) rejected the request. HMAC validators check the **raw body** so subscript / pretty-print at the producer side will break the signature. Confirm the `events.ingestion.sources[].validator.secret_ref` env var is set in the API process.
+- **Run finishes but no message lands in chat** — the run wasn't chat-bound (the trigger didn't have `respect_chat_binding: true` OR the signal didn't carry a `ChatBinding` OR the resolved auth lacked write permission on the target chat). The run channel `bloom.run.finished` carries the `result`; the chat channel deliberately does not — the final `AIMessage` flows through the chat-reload path instead.
 - **`Unknown query transformer 'X'`** — a custom transformer is referenced in YAML but never registered. Move the registration into a startup hook (`startup.hook` in `orchid.yml`) so it fires before agents boot.
 
 ## Testing
