@@ -45,6 +45,7 @@ store).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import httpx
 
@@ -175,6 +176,43 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     except Exception as exc:
         logger.warning("[API] MCP startup warm-up raised: %s", exc)
 
+    # ── Pollen + Bloom (events) — opt-in via agents.yaml ──
+    # When ``events.enabled: false`` (the default) ``start_events``
+    # returns an :class:`EventsRuntime` with ``enabled=False`` and
+    # zero side effects: no producers started, no tables touched,
+    # no background tasks created.  Enabled deployments boot the
+    # dispatcher / processor / producers here so the four event
+    # routers (signals / jobs / runs / schedules) can serve traffic.
+    from orchid_ai.config.schema_events import OrchidEventsConfig
+
+    from .events_bootstrap import start_events
+
+    events_cfg = app_ctx.orchid.config.events if app_ctx.orchid is not None else None
+    # Guard against mocked / partial configs in tests: treat anything
+    # that isn't the real Pydantic model as 'no events'.
+    if not isinstance(events_cfg, OrchidEventsConfig):
+        events_cfg = None
+    app_ctx.events = await start_events(
+        events_config=events_cfg,
+        chat_storage=app_ctx.chat_repo,
+        identity_resolver=app_ctx.identity_resolver,
+        session_warmer=(app_ctx.orchid.session_warmer if app_ctx.orchid is not None else None),
+        known_agents=set(
+            (app_ctx.orchid.config.agents.keys()) if events_cfg is not None and app_ctx.orchid is not None else []
+        ),
+    )
+    if app_ctx.events.enabled:
+        # §26.4 — operator nudge: warn when role mapping is absent
+        # AND a service-account trigger exists with default visibility
+        # (admin-only).  Without an admin role, those runs are
+        # invisible to everyone except via DB inspection.
+        _warn_when_no_admin_role_mapping(events_cfg, app_ctx.identity_resolver)
+        logger.info(
+            "[API] Events subsystem ENABLED — producers=%d processor=%s",
+            len(app_ctx.events.producers),
+            "yes" if app_ctx.events.processor else "no",
+        )
+
     # ── Expired-token cleanup (one-shot at startup) ───────
     # The MCP token store accumulates expired rows over time; nothing
     # reads them once ``record.is_expired`` is true, but they sit in
@@ -197,6 +235,57 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         s.vector_backend,
         list(app_ctx.orchid.config.agents.keys()),
     )
+
+
+def _warn_when_no_admin_role_mapping(events_cfg: Any, resolver: Any) -> None:
+    """Per §26.4 — log a single warning when the configured resolver
+    likely doesn't populate ``OrchidAuthContext.roles`` AND at least
+    one ``service_account`` trigger has the default ``admin``
+    visibility.  Without the role mapping those runs are inaccessible
+    to everyone but operators with DB access.
+
+    The detection is heuristic: if the resolver class name doesn't
+    contain ``Role`` or ``Admin`` AND its ``resolve`` method's
+    docstring lacks a ``roles`` reference, we assume it's a vanilla
+    bearer-only resolver.  False positives here are fine — the warn
+    nudges the operator to confirm.
+    """
+    if events_cfg is None or not events_cfg.enabled:
+        return
+    # Anyone with at least one default-visibility service-account trigger?
+    has_default_sa = False
+    for t in events_cfg.triggers:
+        identity_mode = getattr(t.emits.identity, "mode", "")
+        if identity_mode == "service_account" and t.emits.visibility is None:
+            has_default_sa = True
+            break
+    if not has_default_sa:
+        return
+    if resolver is None:
+        logger.warning(
+            "[API] events.enabled=true with a service_account trigger AND no "
+            "identity resolver configured — every JobRun from that trigger "
+            "will be invisible to API readers (visibility='admin' but no "
+            "auth.roles to mark anyone admin).  Set IDENTITY_RESOLVER_CLASS "
+            "to a resolver that populates OrchidAuthContext.roles, or opt the "
+            "trigger into visibility='tenant' explicitly (see spec §26.4)."
+        )
+        return
+    cls = type(resolver)
+    name = cls.__name__
+    looks_role_aware = (
+        "Role" in name or "Admin" in name or "roles" in (cls.__doc__ or "") or "roles" in (cls.resolve.__doc__ or "")
+    )
+    if not looks_role_aware:
+        logger.warning(
+            "[API] Identity resolver %s.%s does not appear to populate "
+            "OrchidAuthContext.roles; service_account triggers default to "
+            "admin-only visibility (§26.4) which means those runs will be "
+            "invisible to every API reader.  Wire role mapping into your "
+            "resolver, or opt the affected triggers into visibility='tenant'.",
+            cls.__module__,
+            name,
+        )
 
 
 async def teardown_orchid() -> None:

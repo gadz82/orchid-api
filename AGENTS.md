@@ -139,6 +139,38 @@ Gateway exposure config:
 |--------|------|--------|---------|
 | GET | `/mcp-gateway/config` | mcp_gateway | Resolved MCP-gateway exposure config (tool overrides + prompts) |
 
+Pollen + Bloom (events) — only active when `events.enabled: true` in
+`agents.yaml`; every endpoint returns 503 otherwise:
+
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
+| POST | `/signals` | (HTTPIngestionProducer) | Ingest a signal; HMAC/Bearer-validated; 202 + `{signal_id, deduplicated}`. |
+| GET | `/signals` | signals | List signals. **Admin-only.** |
+| GET | `/signals/{id}` | signals | Fetch one (visibility-filtered, 404-never-403). |
+| POST | `/signals/{id}/replay` | signals | Re-enqueue an existing signal. **Admin-only.** |
+| GET | `/jobs` | jobs | List trigger definitions (read-only in v1). |
+| GET | `/jobs/{trigger_id}/runs` | jobs | List runs for a trigger (visibility-filtered). |
+| GET | `/runs` | runs | List runs visible to the caller. |
+| GET | `/runs/{run_id}` | runs | Fetch one (404-never-403). |
+| GET | `/runs/{run_id}/stream` | runs | SSE stream of `bloom.*` events. |
+| POST | `/runs/{run_id}/cancel` | runs | Best-effort cancel. |
+| POST | `/runs/{run_id}/retry` | runs | Re-enqueue the originating signal. |
+| GET | `/schedules` | schedules | List schedules. **Admin-only.** |
+| GET | `/schedules/{id}` | schedules | Fetch one. **Admin-only.** |
+| PATCH | `/schedules/{id}` | schedules | Toggle enabled / change cron. **Admin-only.** |
+
+The four routers share a ``require_visible_run`` dependency that
+enforces run visibility (in `routers/_visibility.py`) and the
+``404-never-403`` contract on per-id endpoints.
+
+Visibility, role mapping, and the operator playbook are documented at:
+
+- `.knowledge/documentation/concepts/run-visibility.md` — concept guide.
+- `.knowledge/documentation/guides/visibility-operations.md` — operator
+  playbook (admin role wiring, audit, support-team grants).
+- `.knowledge/documentation/migrations/001-run-visibility.md` — migration
+  note for upgrading deployments.
+
 ## MCP gateway exposure config
 
 ``/mcp-gateway/config`` serves an :class:`OrchidMCPGatewayConfig` (tool

@@ -440,6 +440,15 @@ mcp_gateway:
   tools:
     orchid_ask:
       title: "Ask the Acme Knowledge Base"
+    # Pollen + Bloom event tools ship through the same surface —
+    # any tool name the gateway exposes is overridable.
+    orchid_signal_emit:
+      title: "Trigger a background workflow"
+      description: "Emit a Pollen signal to start a Bloom run."
+    orchid_bloom_status:
+      title: "Check background work status"
+    orchid_bloom_list:
+      title: "List recent background runs"
   prompts:
     - name: compliance_report
       description: "Generate a compliance-completion report."
@@ -449,8 +458,9 @@ mcp_gateway:
 ```
 
 ```bash
-# Override a title without touching the YAML:
+# Override a title without touching the YAML — works for any tool:
 ORCHID_MCP_GATEWAY_TOOL_ORCHID_ASK_TITLE="Ask the Acme Knowledge Base"
+ORCHID_MCP_GATEWAY_TOOL_ORCHID_SIGNAL_EMIT_DESCRIPTION="Kick off a deep-research Bloom"
 # Point at an external prompts file:
 ORCHID_MCP_GATEWAY_PROMPTS_FILE=/etc/orchid/prompts.yml
 ```
