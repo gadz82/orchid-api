@@ -116,6 +116,17 @@ async def lifespan(app: FastAPI):
     so integrators can reuse them in their own FastAPI apps (see README).
     """
     await setup_orchid()
+    # Mount the HTTPIngestionProducer router after setup so it is registered
+    # before the first request arrives.  This cannot use @app.on_event("startup")
+    # because Starlette skips those handlers when a custom lifespan= is provided.
+    from .context import app_ctx
+
+    if (
+        app_ctx.events is not None
+        and getattr(app_ctx.events, "enabled", False)
+        and app_ctx.events.http_producer is not None
+    ):
+        app.include_router(app_ctx.events.http_producer.router, tags=["events"])
     yield
     await teardown_orchid()
 
@@ -161,24 +172,6 @@ app.include_router(jobs.router)
 app.include_router(runs.router)
 app.include_router(schedules.router)
 app.include_router(chat_events.router)
-
-
-# ── HTTPIngestionProducer router (mounted dynamically) ───
-# When ``events.enabled: true`` the lifespan builds an
-# :class:`HTTPIngestionProducer` and its router is included into the
-# app via the helper below.  We mount eagerly via a startup hook
-# (BEFORE the first request) so the route is visible in the OpenAPI
-# schema and to test clients immediately after startup.
-@app.on_event("startup")
-async def _mount_ingestion_router() -> None:  # pragma: no cover - runtime hook
-    from .context import app_ctx
-
-    runtime = app_ctx.events
-    if runtime is None or not getattr(runtime, "enabled", False):
-        return
-    if runtime.http_producer is None:
-        return
-    app.include_router(runtime.http_producer.router, tags=["events"])
 
 
 # ── Plugin router discovery ────────────────────────────────
