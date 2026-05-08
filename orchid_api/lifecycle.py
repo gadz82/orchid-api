@@ -95,6 +95,17 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         resolver_cls = import_class(s.identity_resolver_class)
         app_ctx.identity_resolver = resolver_cls(http_client=app_ctx.http_client)
         logger.info("[API] Identity resolver: %s", s.identity_resolver_class)
+    elif s.dev_auth_bypass:
+        # The HTTP layer short-circuits to a hardcoded context in auth.py, but
+        # the events processor calls the resolver directly for act_as_user
+        # Bloom triggers.  Wire the dev resolver so those paths work too.
+        from .dev_identity import DevBypassIdentityResolver
+
+        app_ctx.identity_resolver = DevBypassIdentityResolver()
+        logger.warning(
+            "[API] No identity resolver configured — using DevBypassIdentityResolver "
+            "because DEV_AUTH_BYPASS=true.  MUST NOT be used in production."
+        )
     else:
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
@@ -200,6 +211,7 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         known_agents=set(
             (app_ctx.orchid.config.agents.keys()) if events_cfg is not None and app_ctx.orchid is not None else []
         ),
+        graph_invoker=_build_graph_invoker() if app_ctx.orchid is not None else None,
     )
     if app_ctx.events.enabled:
         # Build the FastAPI-backed HTTP ingestion producer when the
@@ -249,6 +261,41 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         s.vector_backend,
         list(app_ctx.orchid.config.agents.keys()),
     )
+
+
+def _build_graph_invoker():
+    """Return a closure that invokes the compiled LangGraph for a Bloom run.
+
+    The closure captures ``app_ctx`` by reference so it always uses the
+    graph that was built during startup — safe because both the graph and
+    ``app_ctx`` are module-level singletons that are never replaced after
+    ``setup_orchid`` returns.
+
+    The invoker builds a minimal initial state from the rendered
+    ``JobSpec.prompt`` and the materialised ``OrchidAuthContext``,
+    then calls ``graph.ainvoke``.  The LangGraph state's ``final_response``
+    field (populated by the supervisor when it decides it is done) is
+    returned as-is; ``GraphJobRunner._extract_final_content`` picks it up.
+    """
+    from langchain_core.messages import HumanMessage
+
+    async def _invoker(run: Any, auth: Any) -> dict:
+        graph = app_ctx.orchid.graph
+        chat_id = str(run.run_id)
+        state = {
+            "messages": [HumanMessage(content=run.spec.prompt)],
+            "auth_context": auth,
+            "chat_id": chat_id,
+        }
+        config = {"configurable": {"thread_id": chat_id}}
+        result = await graph.ainvoke(state, config=config)
+        # Return only the serializable final_response — the full graph
+        # state contains LangChain BaseMessage objects that are not
+        # JSON-serializable and would cause job_store.update() to fail,
+        # which prevents the queue ack and triggers spurious retries.
+        return {"final_response": result.get("final_response") or ""}
+
+    return _invoker
 
 
 def _warn_when_no_admin_role_mapping(events_cfg: Any, resolver: Any) -> None:
