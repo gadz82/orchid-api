@@ -8,6 +8,6 @@ keep working unchanged.
 
 from __future__ import annotations
 
-from orchid_ai.events.bootstrap import EventsRuntime, start_events, stop_events
+from orchid_ai.events.bootstrap import EventsRuntime, build_signal_source_registry, start_events, stop_events
 
-__all__ = ["EventsRuntime", "start_events", "stop_events"]
+__all__ = ["EventsRuntime", "build_signal_source_registry", "start_events", "stop_events"]
