@@ -202,6 +202,20 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         ),
     )
     if app_ctx.events.enabled:
+        # Build the FastAPI-backed HTTP ingestion producer when the
+        # events config includes at least one ingestion source.
+        # HTTPIngestionProducer is an orchid-api adapter (FastAPI dep),
+        # so it lives here rather than in the framework library.
+        if events_cfg is not None and events_cfg.ingestion.sources:
+            from orchid_ai.events.bootstrap import build_signal_source_registry
+
+            from .events.producers.http import HTTPIngestionProducer
+
+            registry = build_signal_source_registry(events_cfg.ingestion.sources)
+            http_producer = HTTPIngestionProducer(registry=registry)
+            await http_producer.start(app_ctx.events.dispatcher)
+            app_ctx.events.producers.append(http_producer)
+            app_ctx.events.http_producer = http_producer
         # §26.4 — operator nudge: warn when role mapping is absent
         # AND a service-account trigger exists with default visibility
         # (admin-only).  Without an admin role, those runs are
