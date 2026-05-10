@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v1.6.0 (2026-05-10)
+
+### Bug Fixes
+
+- Test imports error
+  ([`6635739`](https://github.com/gadz82/orchid-api/commit/663573972d7eb0748929416cf47800d99017d275))
+
+### Chores
+
+- Bump orchid-ai dependency to v1.7.0
+  ([`fd81d75`](https://github.com/gadz82/orchid-api/commit/fd81d75885e8390f4c1db9b888ab06aa9994a96e))
+
+### Documentation
+
+- Add Pollen and Bloom operator panel, in-chat progress, and CLI tools
+  ([`a6cdebe`](https://github.com/gadz82/orchid-api/commit/a6cdebe0a4bb380158cae628bd6c39074a5d63fc))
+
+### Features
+
+- Add lifecycle tests for DevBypassIdentityResolver and `_build_graph_invoker`
+  ([`836c997`](https://github.com/gadz82/orchid-api/commit/836c997e3a911bb881de126dc97373c2d6d24f40))
+
+- Implement bloom event that can create a new chat for a specific user. DevBypassIdentityResolver
+  and LangGraph invoker setup.
+  ([`8380f25`](https://github.com/gadz82/orchid-api/commit/8380f255d69444f1374423c09d0da42be4d861b4))
+
+- Implement Pollen + Bloom subsystem and endpoints for event-driven workflows
+  ([`7d9e386`](https://github.com/gadz82/orchid-api/commit/7d9e3860c30f7e7fed8fcdd44ec37538441dc0ac))
+
+### Refactoring
+
+- **docs**: Remove phased rollout references for streamlined documentation
+  ([`6e8f38d`](https://github.com/gadz82/orchid-api/commit/6e8f38d8d66efaa844c4bca032f040a2226d442d))
+
+- **events**: Remove `HTTPIngestionProducer` from library and relocate to `orchid-api`
+  ([`15bc739`](https://github.com/gadz82/orchid-api/commit/15bc739b7048bd81855d2617afc66c2677b8d612))
+
+
 ## v1.5.0 (2026-05-05)
 
 ### Chores
