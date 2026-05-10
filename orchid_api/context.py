@@ -48,6 +48,12 @@ class AppContext:
     auth_exchange_client: OrchidAuthExchangeClient | None = None
     oauth_state_store: OrchidOAuthStateStore | None = None
 
+    # Pollen + Bloom runtime — only populated when
+    # ``events.enabled: true`` in the agents config.  When events are
+    # off, this stays at the default ``EventsRuntime(enabled=False)``
+    # and the four routers degrade gracefully (503 from the deps).
+    events: Any = None
+
     # ── Read-through properties (convenience for existing routers) ──
 
     @property
@@ -82,6 +88,14 @@ class AppContext:
         Safe to call twice — each step short-circuits when its resource
         is already ``None``.
         """
+        # Stop events first so producers don't push new signals into
+        # storage as we're closing the chat DB.
+        if self.events is not None and getattr(self.events, "enabled", False):
+            from .events_bootstrap import stop_events
+
+            await stop_events(self.events)
+            self.events = None
+
         if self.orchid is not None:
             await self.orchid.close()
             self.orchid = None
@@ -185,3 +199,20 @@ def get_agents_config_optional() -> OrchidAgentsConfig | None:
     runtime is fully wired.
     """
     return app_ctx.agents_config
+
+
+def get_events_runtime() -> Any:
+    """FastAPI dependency — returns the live events runtime.
+
+    Raises 503 when events are disabled (or not yet wired).  The
+    four event-driven routers depend on this so a misconfigured
+    deployment surfaces a clear error instead of an obscure
+    AttributeError.
+    """
+    runtime = app_ctx.events
+    if runtime is None or not getattr(runtime, "enabled", False):
+        raise HTTPException(
+            status_code=503,
+            detail="events subsystem is disabled (events.enabled=false in agents.yaml)",
+        )
+    return runtime

@@ -31,15 +31,20 @@ from .routers import (
     auth_exchange,
     auth_identity,
     auth_info,
+    chat_events,
     chats,
     diagnostics,
+    jobs,
     mcp_auth,
     mcp_gateway,
     mcp_gateway_state,
     messages,
     resume,
+    runs,
+    schedules,
     session,
     sharing,
+    signals,
     streaming,
 )
 from .settings import get_settings
@@ -111,6 +116,17 @@ async def lifespan(app: FastAPI):
     so integrators can reuse them in their own FastAPI apps (see README).
     """
     await setup_orchid()
+    # Mount the HTTPIngestionProducer router after setup so it is registered
+    # before the first request arrives.  This cannot use @app.on_event("startup")
+    # because Starlette skips those handlers when a custom lifespan= is provided.
+    from .context import app_ctx
+
+    if (
+        app_ctx.events is not None
+        and getattr(app_ctx.events, "enabled", False)
+        and app_ctx.events.http_producer is not None
+    ):
+        app.include_router(app_ctx.events.http_producer.router, tags=["events"])
     yield
     await teardown_orchid()
 
@@ -148,6 +164,14 @@ app.include_router(session.router)
 app.include_router(streaming.router)
 app.include_router(diagnostics.router)
 app.include_router(admin.router)
+# Pollen + Bloom routers — return 503 from each endpoint when
+# ``events.enabled: false`` (the default).  Mounting them
+# unconditionally keeps the app schema stable across config flips.
+app.include_router(signals.router)
+app.include_router(jobs.router)
+app.include_router(runs.router)
+app.include_router(schedules.router)
+app.include_router(chat_events.router)
 
 
 # ── Plugin router discovery ────────────────────────────────

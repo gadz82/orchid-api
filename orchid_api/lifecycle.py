@@ -45,6 +45,7 @@ store).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import httpx
 
@@ -94,6 +95,17 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         resolver_cls = import_class(s.identity_resolver_class)
         app_ctx.identity_resolver = resolver_cls(http_client=app_ctx.http_client)
         logger.info("[API] Identity resolver: %s", s.identity_resolver_class)
+    elif s.dev_auth_bypass:
+        # The HTTP layer short-circuits to a hardcoded context in auth.py, but
+        # the events processor calls the resolver directly for act_as_user
+        # Bloom triggers.  Wire the dev resolver so those paths work too.
+        from .dev_identity import DevBypassIdentityResolver
+
+        app_ctx.identity_resolver = DevBypassIdentityResolver()
+        logger.warning(
+            "[API] No identity resolver configured — using DevBypassIdentityResolver "
+            "because DEV_AUTH_BYPASS=true.  MUST NOT be used in production."
+        )
     else:
         app_ctx.identity_resolver = None
         logger.info("[API] No identity resolver configured — only dev_auth_bypass works")
@@ -175,6 +187,58 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     except Exception as exc:
         logger.warning("[API] MCP startup warm-up raised: %s", exc)
 
+    # ── Pollen + Bloom (events) — opt-in via agents.yaml ──
+    # When ``events.enabled: false`` (the default) ``start_events``
+    # returns an :class:`EventsRuntime` with ``enabled=False`` and
+    # zero side effects: no producers started, no tables touched,
+    # no background tasks created.  Enabled deployments boot the
+    # dispatcher / processor / producers here so the four event
+    # routers (signals / jobs / runs / schedules) can serve traffic.
+    from orchid_ai.config.schema_events import OrchidEventsConfig
+
+    from .events_bootstrap import start_events
+
+    events_cfg = app_ctx.orchid.config.events if app_ctx.orchid is not None else None
+    # Guard against mocked / partial configs in tests: treat anything
+    # that isn't the real Pydantic model as 'no events'.
+    if not isinstance(events_cfg, OrchidEventsConfig):
+        events_cfg = None
+    app_ctx.events = await start_events(
+        events_config=events_cfg,
+        chat_storage=app_ctx.chat_repo,
+        identity_resolver=app_ctx.identity_resolver,
+        session_warmer=(app_ctx.orchid.session_warmer if app_ctx.orchid is not None else None),
+        known_agents=set(
+            (app_ctx.orchid.config.agents.keys()) if events_cfg is not None and app_ctx.orchid is not None else []
+        ),
+        graph_invoker=_build_graph_invoker() if app_ctx.orchid is not None else None,
+    )
+    if app_ctx.events.enabled:
+        # Build the FastAPI-backed HTTP ingestion producer when the
+        # events config includes at least one ingestion source.
+        # HTTPIngestionProducer is an orchid-api adapter (FastAPI dep),
+        # so it lives here rather than in the framework library.
+        if events_cfg is not None and events_cfg.ingestion.sources:
+            from orchid_ai.events.bootstrap import build_signal_source_registry
+
+            from .events.producers.http import HTTPIngestionProducer
+
+            registry = build_signal_source_registry(events_cfg.ingestion.sources)
+            http_producer = HTTPIngestionProducer(registry=registry)
+            await http_producer.start(app_ctx.events.dispatcher)
+            app_ctx.events.producers.append(http_producer)
+            app_ctx.events.http_producer = http_producer
+        # §26.4 — operator nudge: warn when role mapping is absent
+        # AND a service-account trigger exists with default visibility
+        # (admin-only).  Without an admin role, those runs are
+        # invisible to everyone except via DB inspection.
+        _warn_when_no_admin_role_mapping(events_cfg, app_ctx.identity_resolver)
+        logger.info(
+            "[API] Events subsystem ENABLED — producers=%d processor=%s",
+            len(app_ctx.events.producers),
+            "yes" if app_ctx.events.processor else "no",
+        )
+
     # ── Expired-token cleanup (one-shot at startup) ───────
     # The MCP token store accumulates expired rows over time; nothing
     # reads them once ``record.is_expired`` is true, but they sit in
@@ -197,6 +261,92 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         s.vector_backend,
         list(app_ctx.orchid.config.agents.keys()),
     )
+
+
+def _build_graph_invoker():
+    """Return a closure that invokes the compiled LangGraph for a Bloom run.
+
+    The closure captures ``app_ctx`` by reference so it always uses the
+    graph that was built during startup — safe because both the graph and
+    ``app_ctx`` are module-level singletons that are never replaced after
+    ``setup_orchid`` returns.
+
+    The invoker builds a minimal initial state from the rendered
+    ``JobSpec.prompt`` and the materialised ``OrchidAuthContext``,
+    then calls ``graph.ainvoke``.  The LangGraph state's ``final_response``
+    field (populated by the supervisor when it decides it is done) is
+    returned as-is; ``GraphJobRunner._extract_final_content`` picks it up.
+    """
+    from langchain_core.messages import HumanMessage
+
+    async def _invoker(run: Any, auth: Any) -> dict:
+        graph = app_ctx.orchid.graph
+        chat_id = str(run.run_id)
+        state = {
+            "messages": [HumanMessage(content=run.spec.prompt)],
+            "auth_context": auth,
+            "chat_id": chat_id,
+        }
+        config = {"configurable": {"thread_id": chat_id}}
+        result = await graph.ainvoke(state, config=config)
+        # Return only the serializable final_response — the full graph
+        # state contains LangChain BaseMessage objects that are not
+        # JSON-serializable and would cause job_store.update() to fail,
+        # which prevents the queue ack and triggers spurious retries.
+        return {"final_response": result.get("final_response") or ""}
+
+    return _invoker
+
+
+def _warn_when_no_admin_role_mapping(events_cfg: Any, resolver: Any) -> None:
+    """Per §26.4 — log a single warning when the configured resolver
+    likely doesn't populate ``OrchidAuthContext.roles`` AND at least
+    one ``service_account`` trigger has the default ``admin``
+    visibility.  Without the role mapping those runs are inaccessible
+    to everyone but operators with DB access.
+
+    The detection is heuristic: if the resolver class name doesn't
+    contain ``Role`` or ``Admin`` AND its ``resolve`` method's
+    docstring lacks a ``roles`` reference, we assume it's a vanilla
+    bearer-only resolver.  False positives here are fine — the warn
+    nudges the operator to confirm.
+    """
+    if events_cfg is None or not events_cfg.enabled:
+        return
+    # Anyone with at least one default-visibility service-account trigger?
+    has_default_sa = False
+    for t in events_cfg.triggers:
+        identity_mode = getattr(t.emits.identity, "mode", "")
+        if identity_mode == "service_account" and t.emits.visibility is None:
+            has_default_sa = True
+            break
+    if not has_default_sa:
+        return
+    if resolver is None:
+        logger.warning(
+            "[API] events.enabled=true with a service_account trigger AND no "
+            "identity resolver configured — every JobRun from that trigger "
+            "will be invisible to API readers (visibility='admin' but no "
+            "auth.roles to mark anyone admin).  Set IDENTITY_RESOLVER_CLASS "
+            "to a resolver that populates OrchidAuthContext.roles, or opt the "
+            "trigger into visibility='tenant' explicitly (see spec §26.4)."
+        )
+        return
+    cls = type(resolver)
+    name = cls.__name__
+    looks_role_aware = (
+        "Role" in name or "Admin" in name or "roles" in (cls.__doc__ or "") or "roles" in (cls.resolve.__doc__ or "")
+    )
+    if not looks_role_aware:
+        logger.warning(
+            "[API] Identity resolver %s.%s does not appear to populate "
+            "OrchidAuthContext.roles; service_account triggers default to "
+            "admin-only visibility (§26.4) which means those runs will be "
+            "invisible to every API reader.  Wire role mapping into your "
+            "resolver, or opt the affected triggers into visibility='tenant'.",
+            cls.__module__,
+            name,
+        )
 
 
 async def teardown_orchid() -> None:
