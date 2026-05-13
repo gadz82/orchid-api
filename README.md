@@ -579,6 +579,10 @@ ruff check orchid_api/
 - Routers split by domain (SRP): chats, messages, sharing, streaming, etc.
 - All runtime state in `AppContext` — no module-level globals
 
+## Related Projects
+
+- **[orchid-examples](https://github.com/gadz82/orchid-examples)** — Example configurations, custom agents, and integration patterns
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
