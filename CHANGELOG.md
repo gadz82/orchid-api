@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.6.1 (2026-05-13)
+
+### Bug Fixes
+
+- Add links to orchid-examples in READMEs across projects. [skip_ci]
+  ([`ac8ad22`](https://github.com/gadz82/orchid-api/commit/ac8ad2298efd96a132493fb396e114ca3c8de786))
+
+
 ## v1.6.0 (2026-05-10)
 
 ### Bug Fixes
