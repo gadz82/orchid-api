@@ -297,7 +297,7 @@ app.include_router(resume.router,    prefix="/ai")
 
 Run as usual: `uvicorn my_app:app --port 8000`.
 
-Full working example: [`examples/embedded-api/`](../examples/embedded-api/).
+Full working example: [orchid-examples/embedded-api](https://github.com/gadz82/orchid-examples/tree/main/embedded-api).
 
 **Notes:**
 
@@ -365,7 +365,7 @@ async def stats(auth: OrchidAuthContext = Depends(get_auth_context)):
     return {"tenant": auth.tenant_key, ...}
 ```
 
-Full working example: [`examples/api-extensions/`](../examples/api-extensions/)
+Full working example: [orchid-examples/api-extensions](https://github.com/gadz82/orchid-examples/tree/main/api-extensions)
 — demonstrates both patterns with `/admin/stats`, `/admin/cache/clear`,
 `/admin/rag/index-text`, `/admin/agents` endpoints.
 
@@ -439,13 +439,13 @@ storage:
   class: orchid_ai.persistence.postgres.OrchidPostgresChatStorage
   dsn: postgresql://user:pass@host:5432/orchid
 
-# orchid.yml — custom JSON-file backend (see examples/custom-storage/)
+# orchid.yml — custom JSON-file backend (see orchid-examples/custom-storage)
 storage:
   class: examples.custom-storage.storage.json_file.OrchidJSONChatStorage
   dsn: /var/lib/orchid/chats.json
 ```
 
-The factory at `orchid_ai.persistence.factory.build_chat_storage` resolves the dotted import path and constructs the backend with `dsn=` and `extra_migrations_package=` kwargs. See [`examples/custom-storage/`](../examples/custom-storage/) for a fully worked example including the contract checklist.
+The factory at `orchid_ai.persistence.factory.build_chat_storage` resolves the dotted import path and constructs the backend with `dsn=` and `extra_migrations_package=` kwargs. See [orchid-examples/custom-storage](https://github.com/gadz82/orchid-examples/tree/main/custom-storage) for a fully worked example including the contract checklist.
 
 ## Multi-tenancy
 
@@ -477,11 +477,9 @@ For multi-replica installs:
 
 `orchid-api` is a pip package — it does not ship a Dockerfile. Each
 integrator owns its own Dockerfile + compose file; refer to the
-examples in this monorepo (or roll your own) for a starting point:
+[orchid-examples](https://github.com/gadz82/orchid-examples) repository for starting points:
 
-- **`examples/Dockerfile`** — Demo deployment (SQLite + Qdrant)
-- Each consumer project under the monorepo defines its own production
-  Dockerfile tailored to its persistence and vector backends.
+- **[orchid-examples](https://github.com/gadz82/orchid-examples)** — Example deployments and consumer projects
 
 ```bash
 # Typical pattern: start the stack with a compose file the consumer project owns.
