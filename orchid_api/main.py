@@ -26,6 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from orchid_ai.observability import configure_perf_logger
 
 from .lifecycle import setup_orchid, teardown_orchid
+from .middleware import ConfigReloadMiddleware
+from .context import app_ctx
 from .routers import (
     admin,
     auth_exchange,
@@ -119,8 +121,6 @@ async def lifespan(app: FastAPI):
     # Mount the HTTPIngestionProducer router after setup so it is registered
     # before the first request arrives.  This cannot use @app.on_event("startup")
     # because Starlette skips those handlers when a custom lifespan= is provided.
-    from .context import app_ctx
-
     if (
         app_ctx.events is not None
         and getattr(app_ctx.events, "enabled", False)
@@ -148,6 +148,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Config hot-reload middleware (no-op when interval=0 or not MD) ──
+_settings = get_settings()
+if _settings.orchid_reload_interval > 0:
+    app.add_middleware(
+        ConfigReloadMiddleware,
+        orchid_ref=app_ctx.orchid,  # resolved lazily at each dispatch
+        interval_s=float(_settings.orchid_reload_interval),
+    )
 
 # ── Built-in Routers ───────────────────────────────────────
 app.include_router(chats.router)
