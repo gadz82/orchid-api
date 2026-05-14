@@ -26,9 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def _apply_yaml_config() -> None:
-    """Load ``orchid.yml`` and export values as env vars (if not already set)."""
-    config_path = os.environ.get("ORCHID_CONFIG", "") or os.environ.get("DOCEBAU_CONFIG", "")
+    """Load ``orchid.yml`` and export values as env vars (if not already set).
+
+    Skips ``.md`` files — Markdown config applies its own env-var mapping
+    through the :class:`orchid_ai.Orchid` facade.
+    """
+    config_path = os.environ.get("ORCHID_CONFIG", "")
     if not config_path:
+        return
+    if config_path.endswith(".md"):
         return
 
     from orchid_ai.config.yaml_env import apply_yaml_to_env
@@ -77,6 +83,20 @@ class Settings(BaseSettings):
 
     # ── Agent config ──────────────────────────────────
     agents_config_path: str = "agents.yaml"
+
+    # ── Config format — auto-detect or force md / yaml ────────
+    # ``auto`` (default): picks based on file extension (``.md`` → MD,
+    # ``.yaml`` / ``.yml`` → YAML, directory → checks for ``orchid.md``
+    # then ``orchid.yml``).
+    # ``md``: force Markdown config loader.
+    # ``yaml``: force YAML config loader (existing behaviour).
+    orchid_config_format: str = "auto"
+
+    # ── Hot-reload ────────────────────────────────────────────
+    # Seconds between config-change checks.  0 = disabled.
+    # Only active when a config watcher is present (created
+    # automatically by the MD config loader when ``watch=True``).
+    orchid_reload_interval: int = 30
 
     # ── Vector DB ─────────────────────────────────────────────
     qdrant_url: str = "http://qdrant:6333"
