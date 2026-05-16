@@ -76,7 +76,11 @@ async def test_send_message_wrong_user(auth, sample_session):
 @pytest.mark.asyncio
 async def test_send_message_success(auth, sample_session):
     graph = AsyncMock()
-    graph.ainvoke.return_value = {"final_response": "Hello!", "active_agents": ["helper"]}
+
+    async def _fake_astream(*_a, **_kw):
+        yield ("values", {"final_response": "Hello!", "active_agents": ["helper"]})
+
+    graph.astream = _fake_astream
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=sample_session)
     chat_repo.get_messages = AsyncMock(return_value=[])
@@ -99,7 +103,11 @@ async def test_send_message_success(auth, sample_session):
 @pytest.mark.asyncio
 async def test_send_message_persists(auth, sample_session):
     graph = AsyncMock()
-    graph.ainvoke.return_value = {"final_response": "Reply", "active_agents": []}
+
+    async def _fake_astream(*_a, **_kw):
+        yield ("values", {"final_response": "Reply", "active_agents": []})
+
+    graph.astream = _fake_astream
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=sample_session)
     chat_repo.get_messages = AsyncMock(return_value=[])
@@ -124,7 +132,11 @@ async def test_send_message_persists(auth, sample_session):
 @pytest.mark.asyncio
 async def test_send_message_auto_title(auth, sample_session):
     graph = AsyncMock()
-    graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
+
+    async def _fake_astream(*_a, **_kw):
+        yield ("values", {"final_response": "ok", "active_agents": []})
+
+    graph.astream = _fake_astream
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=sample_session)
     chat_repo.get_messages = AsyncMock(return_value=[])
@@ -147,7 +159,11 @@ async def test_send_message_auto_title(auth, sample_session):
 @pytest.mark.asyncio
 async def test_send_message_no_auto_title_with_history(auth, sample_session, sample_message):
     graph = AsyncMock()
-    graph.ainvoke.return_value = {"final_response": "ok", "active_agents": []}
+
+    async def _fake_astream(*_a, **_kw):
+        yield ("values", {"final_response": "ok", "active_agents": []})
+
+    graph.astream = _fake_astream
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=sample_session)
     chat_repo.get_messages = AsyncMock(return_value=[sample_message])
