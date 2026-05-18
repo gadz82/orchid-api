@@ -50,8 +50,9 @@ async def stream_supervisor_tokens(
       1. Token buffering / agent-status emission via
          :class:`SupervisorTokenBuffer`.
       2. Hard timeout via :func:`asyncio.timeout`.
-      3. Cancellation cleanup so a disconnected client doesn't trigger
-         message persistence.
+      3. Cancellation handling — user-initiated stops (where content was
+         generated) persist the partial response with ``metadata.cancelled=True``.
+         Immediate client disconnects (no content) still skip persistence.
       4. Best-effort persistence of the user + assistant messages and
          auto-titling once the stream terminates normally.
 
@@ -176,6 +177,55 @@ async def stream_supervisor_tokens(
             request_id,
             chat_id[:8],
         )
+        # Only persist when there is real content — protects against
+        # immediate client-disconnect noise (no tokens ever generated).
+        if full_response_parts:
+            graph_elapsed = (time.perf_counter() - graph_start) * 1000
+            full_response = "".join(full_response_parts) or "No response generated."
+            agents_used = sorted(seen_agents)
+            auth_required = [name for name, ok in prepared.mcp_auth_status.items() if not ok]
+
+            yield sse_event(
+                {
+                    "type": "done",
+                    "response": full_response,
+                    "agents_used": agents_used,
+                    "agent_results": agent_results,
+                    "auth_required": auth_required,
+                    "timed_out": False,
+                    "cancelled": True,
+                }
+            )
+
+            persist_start = time.perf_counter()
+            try:
+                await chat_repo.add_message(chat_id, "user", prepared.message)
+                await chat_repo.add_message(
+                    chat_id,
+                    "assistant",
+                    full_response,
+                    agents_used=agents_used,
+                    metadata={"cancelled": True},
+                )
+                await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
+            except Exception as exc:
+                logger.error("[Stream] Persistence error during cancellation: %s", exc, exc_info=True)
+            persist_elapsed = (time.perf_counter() - persist_start) * 1000
+
+            total_elapsed = (time.perf_counter() - request_start) * 1000
+            perf_logger.info(
+                "[PERF][req=%s][stream] graph.astream (cancelled) took %.1f ms | persist=%.1f ms | total=%.1f ms",
+                request_id,
+                graph_elapsed,
+                persist_elapsed,
+                total_elapsed,
+            )
+            perf_logger.info(
+                "[PERF][req=%s][stream] === REQUEST END (cancelled) === total=%.1f ms agents=%s",
+                request_id,
+                total_elapsed,
+                agents_used,
+            )
         raise
     except TimeoutError:
         timed_out = True
@@ -197,6 +247,7 @@ async def stream_supervisor_tokens(
         logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
         yield sse_event({"type": "error", "message": "An error occurred while processing your request."})
 
+    # Normal completion path (timeout / error fall through here too)
     graph_elapsed = (time.perf_counter() - graph_start) * 1000
 
     full_response = "".join(full_response_parts) or "No response generated."
@@ -211,6 +262,7 @@ async def stream_supervisor_tokens(
             "agent_results": agent_results,
             "auth_required": auth_required,
             "timed_out": timed_out,
+            "cancelled": False,
         }
     )
 

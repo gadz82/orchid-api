@@ -45,6 +45,7 @@ store).
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -139,9 +140,14 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     # orchid-api applies YAML → env at module import time (settings.py),
     # so ``apply_yaml=False`` prevents a double-application; every knob
     # below is already resolved from ``Settings``.
+    #
+    # For Markdown config (``ORCHID_CONFIG=orchid.md`` or auto-detected),
+    # the path is passed through so ``from_config_path`` auto-detects the
+    # format and delegates to the MD loader.
+    config_path = os.environ.get("ORCHID_CONFIG", "")
     app_ctx.orchid = await Orchid.from_config_path(
-        config_path="",
-        apply_yaml=False,
+        config_path=config_path,
+        apply_yaml=bool(config_path and not config_path.endswith(".md")),
         agents_config_path=s.agents_config_path,
         model=s.litellm_model,
         vector_backend=s.vector_backend,
