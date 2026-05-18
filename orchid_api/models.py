@@ -70,6 +70,7 @@ class MessageOut(BaseModel):
     content: str
     agents_used: list[str]
     created_at: str
+    metadata: dict | None = None
 
 
 class IndexResponse(BaseModel):
@@ -124,4 +125,5 @@ def message_to_out(m) -> MessageOut:
         content=m.content,
         agents_used=m.agents_used,
         created_at=m.created_at.isoformat() if isinstance(m.created_at, datetime) else str(m.created_at),
+        metadata=getattr(m, "metadata", None),
     )

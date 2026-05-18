@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -149,34 +150,73 @@ async def send_chat_message(
     prep_elapsed = (time.perf_counter() - prep_start) * 1000
     perf_logger.info("[PERF][req=%s] prepare_graph_state took %.1f ms", request_id, prep_elapsed)
 
-    # Run the agent graph (blocking — returns full response)
+    # Run the agent graph via astream so we can capture partial results on
+    # cancellation (client disconnect / request abort).
     graph_config = {"configurable": {"thread_id": chat_id, "request_id": request_id}}
     metrics = OrchidMetricsHandler()
     graph_config["callbacks"] = [metrics]
 
     graph_start = time.perf_counter()
+    last_result: dict[str, Any] | None = None
+    cancelled = False
+
     try:
-        result = await graph.ainvoke(prepared.initial_state, config=graph_config)
+        async for _mode, payload in graph.astream(
+            prepared.initial_state,
+            config=graph_config,
+            stream_mode=["values"],
+        ):
+            last_result = payload
     except GraphInterrupt as exc:
         # HITL: graph paused for tool approval — don't persist messages yet
         graph_elapsed = (time.perf_counter() - graph_start) * 1000
         total_elapsed = (time.perf_counter() - request_start) * 1000
         perf_logger.info(
-            "[PERF][req=%s] graph.ainvoke (interrupted) took %.1f ms | total=%.1f ms",
+            "[PERF][req=%s] graph.astream (interrupted) took %.1f ms | total=%.1f ms",
             request_id,
             graph_elapsed,
             total_elapsed,
         )
         return build_interrupt_response(exc, chat_id, auth.tenant_key)
+    except asyncio.CancelledError:
+        cancelled = True
+        graph_elapsed = (time.perf_counter() - graph_start) * 1000
+        logger.info(
+            "[req=%s] Non-streaming request cancelled mid-graph chat=%s",
+            request_id,
+            chat_id[:8],
+        )
+        perf_logger.info(
+            "[PERF][req=%s] graph.astream (cancelled) took %.1f ms",
+            request_id,
+            graph_elapsed,
+        )
+    except Exception as exc:
+        graph_elapsed = (time.perf_counter() - graph_start) * 1000
+        logger.error(
+            "[req=%s] Graph execution error chat=%s: %s",
+            request_id,
+            chat_id[:8],
+            exc,
+            exc_info=True,
+        )
+        return ChatResponse(
+            response="An error occurred while processing your request.",
+            chat_id=chat_id,
+            tenant_id=auth.tenant_key,
+            agents_used=[],
+        )
+
     graph_elapsed = (time.perf_counter() - graph_start) * 1000
 
-    response_text = result.get("final_response", "No response generated.")
-    agents_used = result.get("active_agents", [])
+    response_text = (last_result or {}).get("final_response", "No response generated.")
+    agents_used = (last_result or {}).get("active_agents", [])
 
     # Persist the original user message (not augmented) + assistant response
     persist_start = time.perf_counter()
+    metadata = {"cancelled": True} if cancelled else None
     await chat_repo.add_message(chat_id, "user", prepared.message)
-    await chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used)
+    await chat_repo.add_message(chat_id, "assistant", response_text, agents_used=agents_used, metadata=metadata)
     await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
     persist_elapsed = (time.perf_counter() - persist_start) * 1000
 
@@ -185,7 +225,7 @@ async def send_chat_message(
     # ── Aggregate metrics summary ──
     m = metrics.get_metrics()
     perf_logger.info(
-        "[PERF][req=%s] graph.ainvoke took %.1f ms | persist=%.1f ms | total=%.1f ms",
+        "[PERF][req=%s] graph.astream took %.1f ms | persist=%.1f ms | total=%.1f ms",
         request_id,
         graph_elapsed,
         persist_elapsed,
