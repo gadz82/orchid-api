@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.7.0 (2026-05-18)
+
+### Bug Fixes
+
+- Remove redundant CLAUDE.md symlinks across modules [skip ci]
+  ([`7441c5a`](https://github.com/gadz82/orchid-api/commit/7441c5acfd8b4159e5c803e0d170c16528492f95))
+
+### Features
+
+- Add Markdown config support, hot-reload middleware, and MD integration tests
+  ([`612079a`](https://github.com/gadz82/orchid-api/commit/612079acee7baef4959508763343d0a56ea46186))
+
+- Update orchid-ai dependency to version 1.7.4
+  ([`6f38e69`](https://github.com/gadz82/orchid-api/commit/6f38e69b2c183f6faf67ae4d5ec58fa385c506c2))
+
+- **streaming**: Implement partial response persistence for cancellations
+  ([`1cda029`](https://github.com/gadz82/orchid-api/commit/1cda02919750cd0a58b20143b94fc7bca9a3aad0))
+
+
 ## v1.6.1 (2026-05-13)
 
 ### Bug Fixes
