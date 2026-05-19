@@ -44,6 +44,7 @@ store).
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 from typing import Any
@@ -94,7 +95,11 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     # ── Identity resolver (optional) ──────────────────────
     if s.identity_resolver_class:
         resolver_cls = import_class(s.identity_resolver_class)
-        app_ctx.identity_resolver = resolver_cls(http_client=app_ctx.http_client)
+        sig = inspect.signature(resolver_cls.__init__)
+        if "http_client" in sig.parameters:
+            app_ctx.identity_resolver = resolver_cls(http_client=app_ctx.http_client)
+        else:
+            app_ctx.identity_resolver = resolver_cls()
         logger.info("[API] Identity resolver: %s", s.identity_resolver_class)
     elif s.dev_auth_bypass:
         # The HTTP layer short-circuits to a hardcoded context in auth.py, but
