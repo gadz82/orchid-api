@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.7.1 (2026-05-19)
+
+### Bug Fixes
+
+- Identity resolvers http_client conditional parameter
+  ([`e0d8b98`](https://github.com/gadz82/orchid-api/commit/e0d8b985defffa6e712487630e5bce8ac69b1c05))
+
+
 ## v1.7.0 (2026-05-18)
 
 ### Bug Fixes
