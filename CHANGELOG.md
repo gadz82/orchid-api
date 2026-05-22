@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.7.2 (2026-05-22)
+
+### Bug Fixes
+
+- Update orchid-ai dependency to version 1.8.2
+  ([`8bd9cfa`](https://github.com/gadz82/orchid-api/commit/8bd9cfaf5830e56ca3b4f10ed61cdd6d6455a48d))
+
+- Upgrade orchid-ai to v1.8.1 and add content_sources_json config
+  ([`7f818b2`](https://github.com/gadz82/orchid-api/commit/7f818b23471f9f5e3a075ed898f81ecd2db37e85))
+
+
 ## v1.7.1 (2026-05-19)
 
 ### Bug Fixes
