@@ -121,6 +121,9 @@ class Settings(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
 
+    # ── Content sources ─────────────────────────────────────────
+    content_sources_json: str = ""
+
     # ── Streaming ─────────────────────────────────────────────
     # Hard ceiling on a single SSE response. The graph and any MCP
     # tool it dispatches share this budget — once it expires the
