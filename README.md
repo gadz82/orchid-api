@@ -436,7 +436,7 @@ The default SQLite storage at `~/.orchid/chats.db` is fine for development and s
 ```yaml
 # orchid.yml — built-in PostgreSQL
 storage:
-  class: orchid_ai.persistence.postgres.OrchidPostgresChatStorage
+  class: orchid_storage_postgres.chat_storage.OrchidPostgresChatStorage
   dsn: postgresql://user:pass@host:5432/orchid
 
 # orchid.yml — custom JSON-file backend (see orchid-examples/custom-storage)
