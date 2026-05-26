@@ -29,10 +29,29 @@ Provides HTTP endpoints for chat management, streamed message handling, document
 pip install orchid-ai orchid-api
 ```
 
+## Dependency Matrix
+
+`orchid-api` depends on `orchid-ai` (framework library), which ships with
+`null` and `in_memory` backends only. Additional backends are separate
+plugin packages — install them based on your `orchid.yml` configuration:
+
+| If your config sets this… | Install this alongside `orchid-api` |
+|---|---|
+| `rag.vector_backend: qdrant` | `pip install orchid-rag-qdrant` |
+| `rag.vector_backend: chroma` | `pip install orchid-rag-chroma` |
+| `rag.vector_backend: neo4j` | `pip install orchid-rag-neo4j` |
+| `storage.class: orchid_storage_postgres.*` | `pip install orchid-storage-postgres` |
+| `checkpointer_type: postgres` | `pip install orchid-storage-postgres` |
+
+A missing plugin raises a clear error at startup with `pip install` hint,
+e.g. `Unknown vector backend 'qdrant'. Install: pip install orchid-rag-qdrant`.
+The version constraint (`orchid-ai>=X.Y.Z`) is enforced by pip at install
+time — no runtime version negotiation needed.
+
 ## Quick Start
 
 ```bash
-# With orchid.yml config:
+pip install orchid-ai orchid-api orchid-rag-qdrant  # typical production
 ORCHID_CONFIG=path/to/orchid.yml uvicorn orchid_api.main:app --port 8000
 
 # Health check:
