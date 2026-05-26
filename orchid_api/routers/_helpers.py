@@ -50,7 +50,7 @@ async def verify_chat_ownership(chat_id: str, auth: OrchidAuthContext, chat_repo
     :func:`context.get_chat_repo` (which already guarantees non-None).
     """
     chat = await chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
+    if not chat or chat.tenant_id != auth.tenant_key or chat.user_id != auth.user_id:
         raise HTTPException(status_code=404, detail="Chat not found")
     return chat
 

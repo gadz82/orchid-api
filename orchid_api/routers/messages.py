@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from langgraph.errors import GraphInterrupt
 
 from orchid_ai.core.mcp import OrchidMCPTokenStore
@@ -200,11 +201,18 @@ async def send_chat_message(
             exc,
             exc_info=True,
         )
-        return ChatResponse(
-            response="An error occurred while processing your request.",
-            chat_id=chat_id,
-            tenant_id=auth.tenant_key,
-            agents_used=[],
+        # Persist the user message so the chat history is not orphaned.
+        try:
+            await chat_repo.add_message(chat_id, "user", prepared.message)
+        except Exception as persist_err:
+            logger.error(
+                "[req=%s] Failed to persist user message after graph error: %s",
+                request_id,
+                persist_err,
+            )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while processing your request."},
         )
 
     graph_elapsed = (time.perf_counter() - graph_start) * 1000
