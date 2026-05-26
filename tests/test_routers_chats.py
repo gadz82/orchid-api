@@ -110,6 +110,15 @@ async def test_get_messages_wrong_user(auth, mock_chat_repo, sample_session):
     assert exc.value.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_get_messages_wrong_tenant(auth, mock_chat_repo, sample_session):
+    sample_session.tenant_id = "other-tenant"
+    mock_chat_repo.get_chat.return_value = sample_session
+    with pytest.raises(HTTPException) as exc:
+        await get_messages("chat-001", auth=auth, chat_repo=mock_chat_repo)
+    assert exc.value.status_code == 404
+
+
 # ── delete_chat ────────────────────────────────────────────
 
 
@@ -126,6 +135,15 @@ async def test_delete_chat_not_found(auth, mock_chat_repo):
     mock_chat_repo.get_chat.return_value = None
     with pytest.raises(HTTPException) as exc:
         await delete_chat("nonexistent", auth=auth, chat_repo=mock_chat_repo)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_wrong_tenant(auth, mock_chat_repo, sample_session):
+    sample_session.tenant_id = "other-tenant"
+    mock_chat_repo.get_chat.return_value = sample_session
+    with pytest.raises(HTTPException) as exc:
+        await delete_chat("chat-001", auth=auth, chat_repo=mock_chat_repo)
     assert exc.value.status_code == 404
 
 
