@@ -183,6 +183,19 @@ app.include_router(schedules.router)
 app.include_router(chat_events.router)
 
 
+# ── File exports (static mount) ────────────────────────────
+# Files written by export tools under ORCHID_EXPORT_DIR (default: orchid_exports)
+# are served at GET /exports/{tenant_key}/{path}.
+_export_dir = os.environ.get("ORCHID_EXPORT_DIR", "orchid_exports")
+try:
+    os.makedirs(_export_dir, exist_ok=True)
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/exports", StaticFiles(directory=_export_dir), name="exports")
+    logger.info("[API] Export directory mounted at /exports → %s", _export_dir)
+except Exception as _export_err:
+    logger.warning("[API] Could not mount /exports (%s) — exports will not be served: %s", _export_dir, _export_err)
+
 # ── Plugin router discovery ────────────────────────────────
 
 
