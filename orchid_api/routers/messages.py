@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from langgraph.errors import GraphInterrupt
 
 from orchid_ai.core.mcp import OrchidMCPTokenStore
@@ -210,9 +209,13 @@ async def send_chat_message(
                 request_id,
                 persist_err,
             )
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "An error occurred while processing your request."},
+        # Return a ChatResponse-shaped error payload so the MCP gateway's
+        # zod schema can parse it (raw JSONResponse would break the gateway).
+        return ChatResponse(
+            response="An error occurred while processing your request.",
+            chat_id=chat_id,
+            tenant_id=auth.tenant_key,
+            agents_used=[],
         )
 
     graph_elapsed = (time.perf_counter() - graph_start) * 1000
