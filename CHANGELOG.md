@@ -2,6 +2,37 @@
 
 <!-- version list -->
 
+## v1.8.0 (2026-05-27)
+
+### Bug Fixes
+
+- Add `_mock_qdrant` fixture and update sharing route tests
+  ([`7e003e5`](https://github.com/gadz82/orchid-api/commit/7e003e56f82a91f91c8fd496ce5ac0487628da6c))
+
+- Add `upload_namespace` handling and enable signal-based content delegation
+  ([`c908f89`](https://github.com/gadz82/orchid-api/commit/c908f89d10648a18c267a4d973d98a834aefee10))
+
+- Add dependency matrix documentation across Orchid modules
+  ([`14f2534`](https://github.com/gadz82/orchid-api/commit/14f25348cc8a2b2481c972189ea7bd6e9d05e761))
+
+- Correct class path for PostgreSQL storage in orchid.yml example
+  ([`c6a3ab8`](https://github.com/gadz82/orchid-api/commit/c6a3ab8e244fd45d9f6ed8cf684e964cf5b034b4))
+
+- Handle tenant isolation in chat/message operations and improve error persistence
+  ([`7a1d86c`](https://github.com/gadz82/orchid-api/commit/7a1d86c2c75871fc97fb71a6bb5828719c82d2d3))
+
+- Replace `asyncio.get_event_loop` with `asyncio.run` in test_event_routers
+  ([`b94671e`](https://github.com/gadz82/orchid-api/commit/b94671e2139a5eb1dc4f692140489e191bb99340))
+
+- Replace raw JSONResponse with ChatResponse for MCP compatibility
+  ([`a290894`](https://github.com/gadz82/orchid-api/commit/a290894aecd04f5fc6d6192aa2193704d395a3eb))
+
+### Features
+
+- Serve export files via static route
+  ([`15a7406`](https://github.com/gadz82/orchid-api/commit/15a740681a051420d4481f6555c02bbe1f0cbf10))
+
+
 ## v1.7.2 (2026-05-22)
 
 ### Bug Fixes
