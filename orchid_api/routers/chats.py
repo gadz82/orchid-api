@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.persistence.base import OrchidChatStorage
@@ -12,6 +12,7 @@ from orchid_ai.persistence.base import OrchidChatStorage
 from ..auth import get_auth_context
 from ..context import get_chat_repo
 from ..models import ChatSessionOut, CreateChatRequest, MessageOut, message_to_out, session_to_out
+from ._helpers import verify_chat_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +56,7 @@ async def get_messages(
     chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """Load message history for a chat."""
-    chat = await chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth, chat_repo)
 
     messages = await chat_repo.get_messages(chat_id, limit=limit, offset=offset)
     return [message_to_out(m) for m in messages]
@@ -70,9 +69,7 @@ async def delete_chat(
     chat_repo: OrchidChatStorage = Depends(get_chat_repo),
 ):
     """Delete a chat session and all its messages."""
-    chat = await chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth, chat_repo)
 
     await chat_repo.delete_chat(chat_id)
     return {"status": "deleted", "chat_id": chat_id}

@@ -55,8 +55,21 @@ async def test_share_unsupported_backend(auth):
     assert exc.value.status_code == 501
 
 
+@pytest.fixture
+def _mock_qdrant():
+    models = MagicMock(spec=["FieldCondition", "Filter", "MatchAny", "MatchValue"])
+    models.FieldCondition = MagicMock()
+    models.Filter = MagicMock()
+    models.MatchAny = MagicMock()
+    models.MatchValue = MagicMock()
+    qdrant = MagicMock()
+    qdrant.models = models
+    with patch.dict("sys.modules", {"qdrant_client": qdrant, "qdrant_client.models": models}):
+        yield
+
+
 @pytest.mark.asyncio
-async def test_share_chat_not_found(auth):
+async def test_share_chat_not_found(auth, _mock_qdrant):
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=None)
     reader = MagicMock()
@@ -75,7 +88,7 @@ async def test_share_chat_not_found(auth):
 
 
 @pytest.mark.asyncio
-async def test_share_wrong_user(auth, sample_session):
+async def test_share_wrong_user(auth, sample_session, _mock_qdrant):
     sample_session.user_id = "other-user"
     chat_repo = AsyncMock()
     chat_repo.get_chat = AsyncMock(return_value=sample_session)
@@ -95,7 +108,27 @@ async def test_share_wrong_user(auth, sample_session):
 
 
 @pytest.mark.asyncio
-async def test_share_success(auth, sample_session):
+async def test_share_wrong_tenant(auth, sample_session, _mock_qdrant):
+    sample_session.tenant_id = "other-tenant"
+    chat_repo = AsyncMock()
+    chat_repo.get_chat = AsyncMock(return_value=sample_session)
+    reader = MagicMock()
+    reader.supports_scope_promotion = True
+    with patch("orchid_api.routers.sharing.isinstance", return_value=True):
+        with pytest.raises(HTTPException) as exc:
+            await share_chat(
+                "chat-001",
+                auth=auth,
+                settings=Settings(),
+                chat_repo=chat_repo,
+                runtime=_runtime(reader=reader),
+                agents_config=_agents_config(),
+            )
+        assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_share_success(auth, sample_session, _mock_qdrant):
     reader = MagicMock()
     reader.supports_scope_promotion = True
     reader.promote_scope = AsyncMock(return_value=5)

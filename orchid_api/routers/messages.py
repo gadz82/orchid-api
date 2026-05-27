@@ -200,6 +200,17 @@ async def send_chat_message(
             exc,
             exc_info=True,
         )
+        # Persist the user message so the chat history is not orphaned.
+        try:
+            await chat_repo.add_message(chat_id, "user", prepared.message)
+        except Exception as persist_err:
+            logger.error(
+                "[req=%s] Failed to persist user message after graph error: %s",
+                request_id,
+                persist_err,
+            )
+        # Return a ChatResponse-shaped error payload so the MCP gateway's
+        # zod schema can parse it (raw JSONResponse would break the gateway).
         return ChatResponse(
             response="An error occurred while processing your request.",
             chat_id=chat_id,
