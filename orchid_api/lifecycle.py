@@ -171,6 +171,7 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         checkpointer_dsn=s.checkpointer_dsn,
         startup_hook=s.startup_hook,
         startup_hook_kwargs={"settings": s},
+        runtime_overrides={"upload_namespace": s.upload_namespace},
     )
 
     # ── OAuth PKCE / CSRF state store ─────────────────────
@@ -249,6 +250,16 @@ async def setup_orchid(settings: Settings | None = None) -> None:
             len(app_ctx.events.producers),
             "yes" if app_ctx.events.processor else "no",
         )
+
+        # ── Inject the signal emitter into every agent instance ──
+        # The events subsystem bootstraps after the framework, so
+        # agents don't have a signal emitter yet.  Push one down now.
+        if app_ctx.orchid is not None and app_ctx.events.signal_emitter is not None:
+            app_ctx.orchid.inject_signal_emitter(app_ctx.events.signal_emitter)
+            logger.info(
+                "[API] Signal emitter injected into %d agent(s)",
+                len(app_ctx.orchid._agents),
+            )
 
     # ── Expired-token cleanup (one-shot at startup) ───────
     # The MCP token store accumulates expired rows over time; nothing

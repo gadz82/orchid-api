@@ -15,6 +15,7 @@ from orchid_ai.runtime import OrchidRuntime
 from ..auth import get_auth_context
 from ..context import get_agents_config, get_chat_repo, get_runtime
 from ..settings import Settings, get_settings
+from ._helpers import verify_chat_ownership
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,7 @@ async def share_chat(
     except ImportError:
         raise HTTPException(status_code=503, detail="Sharing requires qdrant-client to be installed")
 
-    chat = await chat_repo.get_chat(chat_id)
-    if not chat or chat.user_id != auth.user_id:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    await verify_chat_ownership(chat_id, auth, chat_repo)
 
     # Find all chat-scoped data and duplicate with user scope
     source_filter = Filter(

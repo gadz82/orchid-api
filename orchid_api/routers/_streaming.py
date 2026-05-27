@@ -81,6 +81,7 @@ async def stream_supervisor_tokens(
     direct_final: str | None = None
     graph_start = time.perf_counter()
     timed_out = False
+    errored = False
 
     try:
         async with asyncio.timeout(settings.stream_max_seconds):
@@ -246,6 +247,7 @@ async def stream_supervisor_tokens(
     except Exception as exc:
         logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
         yield sse_event({"type": "error", "message": "An error occurred while processing your request."})
+        errored = True
 
     # Normal completion path (timeout / error fall through here too)
     graph_elapsed = (time.perf_counter() - graph_start) * 1000
@@ -263,13 +265,15 @@ async def stream_supervisor_tokens(
             "auth_required": auth_required,
             "timed_out": timed_out,
             "cancelled": False,
+            "error": errored,
         }
     )
 
     persist_start = time.perf_counter()
     try:
         await chat_repo.add_message(chat_id, "user", prepared.message)
-        await chat_repo.add_message(chat_id, "assistant", full_response, agents_used=agents_used)
+        if not errored:
+            await chat_repo.add_message(chat_id, "assistant", full_response, agents_used=agents_used)
         await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
     except Exception as exc:
         logger.error("[Stream] Persistence error: %s", exc, exc_info=True)

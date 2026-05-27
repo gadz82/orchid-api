@@ -74,6 +74,26 @@ async def test_send_message_wrong_user(auth, sample_session):
 
 
 @pytest.mark.asyncio
+async def test_send_message_wrong_tenant(auth, sample_session):
+    sample_session.tenant_id = "other-tenant"
+    chat_repo = AsyncMock()
+    chat_repo.get_chat = AsyncMock(return_value=sample_session)
+    with pytest.raises(HTTPException) as exc:
+        await send_chat_message(
+            "chat-001",
+            message="Hi",
+            files=[],
+            auth=auth,
+            settings=Settings(),
+            chat_repo=chat_repo,
+            runtime=_runtime(),
+            graph=AsyncMock(),
+            mcp_token_store=None,
+        )
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_send_message_success(auth, sample_session):
     graph = AsyncMock()
 

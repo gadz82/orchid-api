@@ -111,7 +111,7 @@ def _seed_signal(store: InMemorySignalStore, *, tenant: str = "t-1") -> Signal:
 
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(store.insert(sig))
+    asyncio.run(store.insert(sig))
     return sig
 
 
@@ -148,7 +148,7 @@ def _seed_run(
 
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(job_store.insert(run))
+    asyncio.run(job_store.insert(run))
     return run
 
 
@@ -335,7 +335,7 @@ def test_retry_creates_queue_msg(test_runtime) -> None:
     )
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(test_runtime.signal_store.insert(sig))
+    asyncio.run(test_runtime.signal_store.insert(sig))
 
     app = _make_app(user_id="u-7")
     with TestClient(app) as client:
@@ -351,7 +351,7 @@ def test_cancel_flips_status_to_cancelled(test_runtime) -> None:
     run.status = JobStatus.RUNNING
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(test_runtime.job_store.update(run))
+    asyncio.run(test_runtime.job_store.update(run))
 
     app = _make_app(user_id="u-7")
     with TestClient(app) as client:
@@ -421,7 +421,7 @@ def test_schedules_admin_only(test_runtime) -> None:
 def test_schedules_list_admin(test_runtime) -> None:
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         test_runtime.schedule_store.upsert(
             OrchidScheduleRecord(
                 schedule_id="s1",
@@ -445,7 +445,7 @@ def test_schedules_list_admin(test_runtime) -> None:
 def test_schedules_patch_toggles_enabled(test_runtime) -> None:
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         test_runtime.schedule_store.upsert(
             OrchidScheduleRecord(
                 schedule_id="s1",
