@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.1 (2026-05-29)
+
+### Bug Fixes
+
+- Add `orchid-ai` heavy extras `[documents,events]` to dependencies for runtime support
+  ([`ef469fe`](https://github.com/gadz82/orchid-api/commit/ef469fe12c6e52b02d0b6eda8c3c0865195e2663))
+
+
 ## v1.8.0 (2026-05-27)
 
 ### Bug Fixes
