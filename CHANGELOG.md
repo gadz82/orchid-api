@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.2 (2026-06-01)
+
+### Bug Fixes
+
+- Update orchid-ai dependency to version 1.8.6 across all modules
+  ([`5c3ba1d`](https://github.com/gadz82/orchid-api/commit/5c3ba1d182aa1193a3eb12020a41e514820870c7))
+
+
 ## v1.8.1 (2026-05-29)
 
 ### Bug Fixes
