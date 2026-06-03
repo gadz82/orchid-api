@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.3 (2026-06-03)
+
+### Bug Fixes
+
+- Handle idle chat event streams gracefully by returning idle responses
+  ([`f6f83bc`](https://github.com/gadz82/orchid-api/commit/f6f83bc803e08b920bd2da927052ac568825c6bb))
+
+
 ## v1.8.2 (2026-06-01)
 
 ### Bug Fixes
