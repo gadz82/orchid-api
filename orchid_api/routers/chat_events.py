@@ -38,7 +38,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from orchid_ai.core.events.job import JobRun, JobStatus
@@ -63,7 +63,19 @@ async def stream_chat_events(
     Discovery → subscribe pattern.  See module docstring.
     """
     if events.event_stream is None:
-        raise HTTPException(status_code=503, detail="event stream not configured")
+        _logger.info("No active bloom events for chat %s — returning idle stream", chat_id)
+
+        async def _idle() -> None:
+            yield ": idle\n\n"
+
+        return StreamingResponse(
+            _idle(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     async def _generator():
         # 1. Discovery.  Use ``list_runs`` with the new
