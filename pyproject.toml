@@ -9,7 +9,7 @@ dependencies = [
     # flow (PDF / DOCX / XLSX parsing in ``routers/messages.py``);
     # ``[events]`` covers the APScheduler backend wired by the
     # events runner.
-    "orchid-ai[documents,events]>=1.8.6",
+    "orchid-ai[documents,events]>=1.8.7",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "httpx>=0.28.0",
