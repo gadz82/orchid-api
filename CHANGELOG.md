@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.8.4 (2026-06-04)
+
+### Bug Fixes
+
+- Bump orchid-ai dependency to 1.8.7 in pyproject.toml
+  ([`c1973f9`](https://github.com/gadz82/orchid-api/commit/c1973f97302ae1091962b1aacbd0f0aa31bceb04))
+
+
 ## v1.8.3 (2026-06-03)
 
 ### Bug Fixes
