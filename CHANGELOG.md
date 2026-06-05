@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v1.8.5 (2026-06-05)
+
+### Bug Fixes
+
+- Integrate `with_auth` into graph configurations and update impacted modules
+  ([`75d7e82`](https://github.com/gadz82/orchid-api/commit/75d7e82878ac1493d182fa76fd2c864a0040dbcb))
+
+- Update orchid-ai dependency to version 1.8.8
+  ([`007d723`](https://github.com/gadz82/orchid-api/commit/007d723c9d2a676842cd33d74fe231093173045c))
+
+- Update orchid-ai dependency to version 1.8.8
+  ([`d36b4a7`](https://github.com/gadz82/orchid-api/commit/d36b4a7cce3d69927e05b9de7bd86b816d5276be))
+
+
 ## v1.8.4 (2026-06-04)
 
 ### Bug Fixes
