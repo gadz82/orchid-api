@@ -52,6 +52,7 @@ from typing import Any
 import httpx
 
 from orchid_ai import Orchid
+from orchid_ai.core.run_config import with_auth
 from orchid_ai.mcp.oauth_state import build_oauth_state_store
 from orchid_ai.utils import import_class
 
@@ -306,10 +307,9 @@ def _build_graph_invoker():
         chat_id = str(run.run_id)
         state = {
             "messages": [HumanMessage(content=run.spec.prompt)],
-            "auth_context": auth,
             "chat_id": chat_id,
         }
-        config = {"configurable": {"thread_id": chat_id}}
+        config = with_auth(auth, thread_id=chat_id)
         result = await graph.ainvoke(state, config=config)
         # Return only the serializable final_response — the full graph
         # state contains LangChain BaseMessage objects that are not

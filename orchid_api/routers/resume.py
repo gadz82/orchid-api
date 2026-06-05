@@ -11,6 +11,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.core.run_config import with_auth
 from orchid_ai.persistence.base import OrchidChatStorage
 from orchid_ai.runtime import OrchidRuntime
 
@@ -54,7 +55,7 @@ async def resume_chat(
             detail="Cannot resume: no checkpointer configured. Enable checkpointing to use tool approval.",
         )
 
-    graph_config = {"configurable": {"thread_id": chat_id}}
+    graph_config = with_auth(auth, thread_id=chat_id)
 
     try:
         result = await graph.ainvoke(

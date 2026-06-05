@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langgraph.errors import GraphInterrupt
 
 from orchid_ai.core.mcp import OrchidMCPTokenStore
+from orchid_ai.core.run_config import with_auth
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.observability import OrchidMetricsHandler
 from orchid_ai.persistence.base import OrchidChatStorage
@@ -152,7 +153,7 @@ async def send_chat_message(
 
     # Run the agent graph via astream so we can capture partial results on
     # cancellation (client disconnect / request abort).
-    graph_config = {"configurable": {"thread_id": chat_id, "request_id": request_id}}
+    graph_config = with_auth(auth, thread_id=chat_id, base={"configurable": {"request_id": request_id}})
     metrics = OrchidMetricsHandler()
     graph_config["callbacks"] = [metrics]
 

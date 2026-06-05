@@ -230,7 +230,6 @@ def build_initial_graph_state(
     *,
     augmented_message: str,
     history: list[BaseMessage],
-    auth: OrchidAuthContext,
     chat_id: str,
     mcp_auth_status: dict[str, bool],
     has_checkpointer: bool,
@@ -240,13 +239,16 @@ def build_initial_graph_state(
     When a checkpointer is active the graph persists conversation state
     internally — sending full history would duplicate messages via the
     ``add_messages`` annotation, so we only send the new user message.
+
+    Auth is NOT part of graph state — it travels as execution context in
+    the ``RunnableConfig`` (``with_auth``); the routers attach it to the
+    config they pass to ``graph.ainvoke`` / ``graph.astream``.
     """
     new_user_msg = HumanMessage(content=augmented_message)
     messages = [new_user_msg] if has_checkpointer else [*history, new_user_msg]
 
     state: dict[str, Any] = {
         "messages": messages,
-        "auth_context": auth,
         "chat_id": chat_id,
     }
     if mcp_auth_status:
@@ -300,7 +302,6 @@ async def prepare_graph_state(
     initial_state = build_initial_graph_state(
         augmented_message=augmented_message,
         history=history_messages,
-        auth=auth,
         chat_id=chat_id,
         mcp_auth_status=mcp_auth_status,
         has_checkpointer=runtime.checkpointer is not None,

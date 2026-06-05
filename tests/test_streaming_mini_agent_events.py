@@ -15,9 +15,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from orchid_ai.observability import OrchidMetricsHandler, make_event_message
+from orchid_ai.core.state import OrchidAuthContext
 from orchid_api.routers._helpers import PreparedState
 from orchid_api.routers._streaming import stream_supervisor_tokens
 from orchid_api.settings import Settings
+
+_AUTH = OrchidAuthContext(access_token="tok", tenant_key="acme", user_id="u1")
 
 
 def _parse_events(frames: list[str]) -> list[dict]:
@@ -143,6 +146,7 @@ async def test_all_four_events_fire_in_order(chat_repo):
     response = stream_supervisor_tokens(
         graph=_ScriptedGraph(frames),
         prepared=_prepared(),
+        auth=_AUTH,
         chat_id="chat-1",
         request_id="req-1",
         request_start=0.0,
@@ -219,6 +223,7 @@ async def test_finished_event_with_error_propagates(chat_repo):
     response = stream_supervisor_tokens(
         graph=_ScriptedGraph(frames),
         prepared=_prepared(),
+        auth=_AUTH,
         chat_id="chat-1",
         request_id="req-1",
         request_start=0.0,

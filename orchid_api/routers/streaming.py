@@ -116,6 +116,7 @@ async def stream_chat_message(
     generator = stream_supervisor_tokens(
         graph=graph,
         prepared=prepared,
+        auth=auth,
         chat_id=chat_id,
         request_id=request_id,
         request_start=request_start,
