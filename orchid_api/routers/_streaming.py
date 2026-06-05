@@ -16,6 +16,8 @@ import time
 from typing import Any, AsyncIterator
 
 from orchid_ai.observability import OrchidMetricsHandler, extract_event
+from orchid_ai.core.run_config import with_auth
+from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.persistence.base import OrchidChatStorage
 
 from ..settings import Settings
@@ -35,6 +37,7 @@ async def stream_supervisor_tokens(
     *,
     graph: Any,
     prepared: PreparedState,
+    auth: OrchidAuthContext,
     chat_id: str,
     request_id: str,
     request_start: float,
@@ -74,10 +77,11 @@ async def stream_supervisor_tokens(
             full_response_parts.append(event.content)
         return sse_event({"type": event.kind, "content": event.content})
 
-    graph_config = {
-        "configurable": {"thread_id": chat_id, "request_id": request_id},
-        "callbacks": [metrics],
-    }
+    graph_config = with_auth(
+        auth,
+        thread_id=chat_id,
+        base={"configurable": {"request_id": request_id}, "callbacks": [metrics]},
+    )
     direct_final: str | None = None
     graph_start = time.perf_counter()
     timed_out = False
