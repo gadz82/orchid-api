@@ -122,6 +122,7 @@ class TestYamlToEnvMapping:
             "auth",
             "startup",
             "rag",
+            "cli_rag",
             "upload",
             "storage",
             "mcp_auth",
