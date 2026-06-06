@@ -10,7 +10,7 @@ import yaml
 
 from orchid_ai.config.yaml_env import YAML_TO_ENV as _YAML_TO_ENV
 
-from orchid_api.settings import Settings, _apply_yaml_config
+from orchid_api.settings import Settings, _apply_api_yaml_config, _apply_yaml_config
 
 
 class TestSettings:
@@ -114,6 +114,9 @@ class TestYamlToEnvMapping:
         MCP server URLs live in ``agents.yaml`` (with ``${ENV_VAR}``
         substitution) rather than a framework-pre-declared slot, so no
         vendor-specific names leak into the framework surface.
+
+        The ``api:`` section is intentionally absent — it is handled
+        locally by ``orchid-api`` rather than the core framework.
         """
         sections = {k[0] for k in _YAML_TO_ENV.keys()}
         expected = {
@@ -127,7 +130,6 @@ class TestYamlToEnvMapping:
             "storage",
             "mcp_auth",
             "checkpointer",
-            "api",
             "tracing",
         }
         assert expected == sections
@@ -137,3 +139,51 @@ class TestYamlToEnvMapping:
 
     def test_storage_class_mapped(self):
         assert _YAML_TO_ENV[("storage", "class")] == "CHAT_STORAGE_CLASS"
+
+
+class TestApplyApiYamlConfig:
+    def test_api_section_applied_to_env(self, monkeypatch, tmp_path):
+        """api.* keys from orchid.yml are exported as env vars."""
+        for env_var in ("API_BASE_URL", "CORS_ALLOWED_ORIGINS", "ALLOW_INDEX_ENDPOINT"):
+            monkeypatch.delenv(env_var, raising=False)
+
+        yml = tmp_path / "orchid.yml"
+        yml.write_text(
+            "api:\n"
+            "  base_url: https://api.example.com\n"
+            "  cors_allowed_origins: http://localhost:3000\n"
+            "  allow_index_endpoint: true\n"
+        )
+
+        _apply_api_yaml_config(str(yml))
+        assert os.environ["API_BASE_URL"] == "https://api.example.com"
+        assert os.environ["CORS_ALLOWED_ORIGINS"] == "http://localhost:3000"
+        assert os.environ["ALLOW_INDEX_ENDPOINT"] == "True"
+
+    def test_existing_env_not_overwritten(self, monkeypatch, tmp_path):
+        """Real env vars win over YAML api values."""
+        monkeypatch.setenv("API_BASE_URL", "https://existing.example.com")
+
+        yml = tmp_path / "orchid.yml"
+        yml.write_text("api:\n  base_url: https://yaml.example.com\n")
+
+        _apply_api_yaml_config(str(yml))
+        assert os.environ["API_BASE_URL"] == "https://existing.example.com"
+
+    def test_missing_api_section_is_silent(self, tmp_path):
+        """YAML without an api: section doesn't raise."""
+        yml = tmp_path / "orchid.yml"
+        yml.write_text("llm:\n  model: ollama/llama3.2\n")
+
+        _apply_api_yaml_config(str(yml))  # should not raise
+
+    def test_unknown_api_keys_ignored(self, monkeypatch, tmp_path):
+        """Unknown keys inside the api: section are silently skipped."""
+        monkeypatch.delenv("API_BASE_URL", raising=False)
+
+        yml = tmp_path / "orchid.yml"
+        yml.write_text("api:\n  base_url: https://example.com\n  unknown_key: value\n")
+
+        _apply_api_yaml_config(str(yml))
+        assert os.environ.get("API_BASE_URL") == "https://example.com"
+        assert "UNKNOWN_KEY" not in os.environ

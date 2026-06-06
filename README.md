@@ -406,7 +406,6 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `STARTUP_HOOK` | — | Async function called at startup |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | — | LangSmith API key |
-| `API_BASE_URL` | `http://localhost:8000` | API base URL (for OAuth callback URLs) |
 
 ### Auth
 
@@ -419,6 +418,16 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `AUTH_EXCHANGE_CLIENT_CLASS` | — | Dotted path to `OrchidAuthExchangeClient` subclass — unlocks `/auth/exchange-code` and `/auth/refresh-token` |
 | `AUTH_OAUTH_CLIENT_ID_ENV` | — | Name of the env var holding the public upstream `client_id` (read by the provider at runtime so YAML can be checked into version control) |
 | `AUTH_OAUTH_SCOPE` | — | Advertised OAuth scope for downstream clients |
+
+### API Server
+
+These settings are local to `orchid-api` and are not part of the core framework configuration.
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `API_BASE_URL` | `http://localhost:8000` | Public API URL used for OAuth callback construction |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://frontend:3000` | Comma-separated list of allowed CORS browser origins |
+| `ALLOW_INDEX_ENDPOINT` | `false` | Enable the `POST /index` admin endpoint |
 
 ### Outbound MCP OAuth
 
