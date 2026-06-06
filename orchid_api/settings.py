@@ -25,11 +25,47 @@ from pydantic_settings import BaseSettings
 logger = logging.getLogger(__name__)
 
 
+def _apply_api_yaml_config(config_path: str) -> None:
+    """Read the ``api:`` section from ``orchid.yml`` and export as env vars.
+
+    API-specific configuration is handled locally by ``orchid-api`` rather
+    than the core framework to keep responsibility segregation clean.
+    """
+    import yaml
+
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return
+
+    api_section = data.get("api")
+    if not isinstance(api_section, dict):
+        return
+
+    _API_YAML_TO_ENV: dict[str, str] = {
+        "base_url": "API_BASE_URL",
+        "cors_allowed_origins": "CORS_ALLOWED_ORIGINS",
+        "allow_index_endpoint": "ALLOW_INDEX_ENDPOINT",
+    }
+
+    for key, value in api_section.items():
+        env_var = _API_YAML_TO_ENV.get(key)
+        if env_var is None:
+            continue
+        if env_var not in os.environ:
+            os.environ[env_var] = str(value)
+
+
 def _apply_yaml_config() -> None:
     """Load ``orchid.yml`` and export values as env vars (if not already set).
 
     Skips ``.md`` files — Markdown config applies its own env-var mapping
     through the :class:`orchid_ai.Orchid` facade.
+
+    The ``api:`` section is skipped by the core framework and applied
+    locally by :func:`_apply_api_yaml_config` so API-server concerns
+    stay inside ``orchid-api``.
     """
     config_path = os.environ.get("ORCHID_CONFIG", "")
     if not config_path:
@@ -39,7 +75,8 @@ def _apply_yaml_config() -> None:
 
     from orchid_ai.config.yaml_env import apply_yaml_to_env
 
-    apply_yaml_to_env(config_path)
+    apply_yaml_to_env(config_path, skip_sections={"api"})
+    _apply_api_yaml_config(config_path)
 
 
 # Apply once at import time — before any Settings() call.
