@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.8.6 (2026-06-06)
+
+### Bug Fixes
+
+- Implement local handling of `api` config section in `orchid.yml` and add related tests
+  ([`1b224ed`](https://github.com/gadz82/orchid-api/commit/1b224ed19f7a785213b29f7efd6e6aed407db4d8))
+
+- Relax test to handle temporary presence of deprecated `api` section in `orchid.yml`
+  ([`0df29d6`](https://github.com/gadz82/orchid-api/commit/0df29d6364351d805ca8d8e2efeb1a8d64cc3bb0))
+
+
 ## v1.8.5 (2026-06-05)
 
 ### Bug Fixes
