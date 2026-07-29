@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v1.8.7 (2026-07-29)
+
+### Bug Fixes
+
+- Refine imports, type annotations, and exception handling
+  ([`9c83d22`](https://github.com/gadz82/orchid-api/commit/9c83d225133f09adb94aef7fe01bd64316d8e2ec))
+
+- Update orchid-ai dependency to version 1.8.10
+  ([`c6e6e3b`](https://github.com/gadz82/orchid-api/commit/c6e6e3bd76f76d154b45ea0267098b2685863105))
+
+- Update orchid-ai dependency to version 1.8.10
+  ([`b8d42a1`](https://github.com/gadz82/orchid-api/commit/b8d42a1f224349b22d7bbe535a5475cdad7b21c9))
+
+
 ## v1.8.6 (2026-06-06)
 
 ### Bug Fixes
