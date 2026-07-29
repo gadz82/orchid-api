@@ -41,6 +41,13 @@ packages = ["orchid_api"]
 target-version = "py311"
 line-length = 120
 
+[tool.ruff.lint]
+ignore = [
+    "BLE001",
+    "S110",
+    "B008",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

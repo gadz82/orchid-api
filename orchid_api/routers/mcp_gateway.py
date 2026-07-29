@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-
 from orchid_ai.config import OrchidAgentsConfig, OrchidMCPGatewayConfig
 from orchid_ai.core.state import OrchidAuthContext
 

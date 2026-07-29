@@ -17,7 +17,6 @@ import secrets
 from dataclasses import dataclass
 
 import httpx
-
 from orchid_ai.core.mcp import OrchidMCPClientRegistration
 
 from ...settings import Settings

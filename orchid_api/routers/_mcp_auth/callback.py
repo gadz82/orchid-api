@@ -13,7 +13,6 @@ import time
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse
-
 from orchid_ai.core.mcp import (
     OrchidMCPClientRegistrationStore,
     OrchidMCPTokenRecord,

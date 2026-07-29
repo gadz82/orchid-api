@@ -22,12 +22,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from orchid_ai.observability import configure_perf_logger
 
+from .context import app_ctx
 from .lifecycle import setup_orchid, teardown_orchid
 from .middleware import ConfigReloadMiddleware
-from .context import app_ctx
 from .routers import (
     admin,
     auth_exchange,
@@ -212,7 +211,6 @@ def _load_router_plugins() -> None:
     :func:`orchid_ai.plugins.iter_entry_point_plugins`.
     """
     from fastapi import APIRouter
-
     from orchid_ai.plugins import iter_entry_point_plugins
 
     for name, router in iter_entry_point_plugins("orchid_api.routers", logger=logger):

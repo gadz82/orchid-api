@@ -17,10 +17,9 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
-
 from orchid_ai.core.events.store import OrchidScheduleRecord
 from orchid_ai.core.state import OrchidAuthContext
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_auth_context
 from ..context import get_events_runtime

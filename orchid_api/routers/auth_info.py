@@ -24,12 +24,11 @@ and react appropriately.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
-
 from orchid_ai.core.auth_config import (
     OrchidAuthExchangeClient,
     OrchidUpstreamOAuthConfig,
 )
+from pydantic import BaseModel
 
 from ..context import app_ctx
 from ..settings import Settings, get_settings

@@ -8,11 +8,11 @@ opaque ``state`` that the OAuth callback later consumes.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException
-
 from orchid_ai.core.mcp import OrchidMCPClientRegistrationStore
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.mcp.discovery import (
@@ -30,7 +30,6 @@ from ...context import (
 )
 from ...settings import Settings, get_settings
 from ._helpers import callback_url, generate_code_challenge, generate_code_verifier
-import secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

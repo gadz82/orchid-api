@@ -7,7 +7,6 @@ from typing import Any
 
 import httpx
 from fastapi import HTTPException
-
 from orchid_ai import Orchid, OrchidRuntime
 from orchid_ai.config.schema import OrchidAgentsConfig
 from orchid_ai.core.auth_config import (

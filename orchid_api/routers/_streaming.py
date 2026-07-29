@@ -13,11 +13,12 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
-from orchid_ai.observability import OrchidMetricsHandler, extract_event
 from orchid_ai.core.run_config import with_auth
 from orchid_ai.core.state import OrchidAuthContext
+from orchid_ai.observability import OrchidMetricsHandler, extract_event
 from orchid_ai.persistence.base import OrchidChatStorage
 
 from ..settings import Settings
@@ -120,7 +121,7 @@ async def stream_supervisor_tokens(
                 # is implemented as: drop every chunk produced by a
                 # ``*_mini`` node so the user-visible synthesis stream
                 # stays clean.
-                if node.endswith("_mini") or node.endswith("_aggregator"):
+                if node.endswith(("_mini", "_aggregator")):
                     continue
 
                 if node.endswith("_agent"):
@@ -213,8 +214,8 @@ async def stream_supervisor_tokens(
                     metadata={"cancelled": True},
                 )
                 await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
-            except Exception as exc:
-                logger.error("[Stream] Persistence error during cancellation: %s", exc, exc_info=True)
+            except Exception:
+                logger.exception("[Stream] Persistence error during cancellation")
             persist_elapsed = (time.perf_counter() - persist_start) * 1000
 
             total_elapsed = (time.perf_counter() - request_start) * 1000
@@ -248,8 +249,8 @@ async def stream_supervisor_tokens(
                 ),
             }
         )
-    except Exception as exc:
-        logger.error("[Stream] Graph streaming error: %s", exc, exc_info=True)
+    except Exception:
+        logger.exception("[Stream] Graph streaming error")
         yield sse_event({"type": "error", "message": "An error occurred while processing your request."})
         errored = True
 
@@ -279,8 +280,8 @@ async def stream_supervisor_tokens(
         if not errored:
             await chat_repo.add_message(chat_id, "assistant", full_response, agents_used=agents_used)
         await auto_title_if_first_message(chat_id, prepared.message, prepared.history_rows, chat_repo)
-    except Exception as exc:
-        logger.error("[Stream] Persistence error: %s", exc, exc_info=True)
+    except Exception:
+        logger.exception("[Stream] Persistence error")
     persist_elapsed = (time.perf_counter() - persist_start) * 1000
 
     total_elapsed = (time.perf_counter() - request_start) * 1000
@@ -342,8 +343,7 @@ def _maybe_emit_agent_done(
         return None
     clean = content
     prefix = f"[{agent_name.title()} Agent]\n"
-    if clean.startswith(prefix):
-        clean = clean[len(prefix) :]
+    clean = clean.removeprefix(prefix)
     stripped = clean.strip()
     if len(stripped) <= 50 or " " not in stripped:
         return None

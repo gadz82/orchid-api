@@ -25,7 +25,6 @@ from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.repository import OrchidVectorReader, OrchidVectorWriter
 from orchid_ai.core.state import OrchidAuthContext

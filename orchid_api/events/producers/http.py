@@ -23,11 +23,11 @@ from __future__ import annotations
 import datetime as _dt
 import json as _json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status as _status
+from fastapi import APIRouter, HTTPException, Request
+from fastapi import status as _status
 from fastapi.responses import JSONResponse
-
 from orchid_ai.core.events.dispatcher import OrchidSignalDispatcher
 from orchid_ai.core.events.errors import (
     SignalAuthValidationError,
@@ -38,9 +38,6 @@ from orchid_ai.core.events.producer import OrchidSignalProducer
 from orchid_ai.core.events.signal import SignalEnvelope
 from orchid_ai.events.auth.base import SignalAuthRequest
 from orchid_ai.events.ingestion import SignalSourceRegistry
-
-if TYPE_CHECKING:
-    pass
 
 _logger = logging.getLogger(__name__)
 

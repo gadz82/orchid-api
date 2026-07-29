@@ -10,8 +10,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-
 from orchid_ai.core.mcp import (
     OrchidMCPClientRegistrationStore,
     OrchidMCPDiscoveryError,
@@ -20,6 +18,7 @@ from orchid_ai.core.mcp import (
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.mcp.discovery import OrchidMCPAuthDiscovery
 from orchid_ai.runtime import OrchidRuntime
+from pydantic import BaseModel
 
 from ...auth import get_auth_context
 from ...context import (

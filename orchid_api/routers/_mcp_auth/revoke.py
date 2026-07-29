@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.state import OrchidAuthContext
 

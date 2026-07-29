@@ -20,7 +20,6 @@ from collections import OrderedDict
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException
-
 from orchid_ai.core.state import OrchidAuthContext
 
 from .auth import get_auth_context

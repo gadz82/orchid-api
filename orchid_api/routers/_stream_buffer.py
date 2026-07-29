@@ -25,9 +25,8 @@ Decision table (``next_event`` → action):
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
-
 
 # ── Preamble patterns the LLM wraps handoff content in ──────
 _HANDOFF_PREAMBLES = [
@@ -127,9 +126,7 @@ class SupervisorTokenBuffer:
         combined = "".join(self._chunks)
         if content == combined or combined.startswith(content):
             return True
-        if content == self._chunks[-1]:
-            return True
-        return False
+        return content == self._chunks[-1]
 
     # ── Emission (generators of ``BufferedToken``) ────────
 

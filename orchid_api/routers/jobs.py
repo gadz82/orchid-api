@@ -16,7 +16,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.events.visibility import run_is_visible
 
@@ -72,13 +71,12 @@ async def list_runs_for_trigger(
 
     rows = await events.job_store.list(trigger_id=trigger_id, status=status, limit=limit)
     visible = [r for r in rows if run_is_visible(r, auth)]
-    if not visible and rows:
+    if not visible and rows and "admin" not in (auth.roles or frozenset()):
         # Trigger exists but caller can't see anything — still 404
         # to avoid leaking the trigger's existence to non-actors.
         # Admins always see everything, so we only hit this when the
         # caller has no actor / addressed match.
-        if "admin" not in (auth.roles or frozenset()):
-            raise HTTPException(status_code=404, detail="trigger not found")
+        raise HTTPException(status_code=404, detail="trigger not found")
     return {"items": [_run_to_dict(r) for r in visible]}
 
 

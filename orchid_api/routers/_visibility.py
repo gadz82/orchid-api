@@ -25,11 +25,9 @@ import uuid as _uuid
 from typing import Any
 
 from fastapi import Depends, HTTPException
-
 from orchid_ai.core.events.job import JobRun
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.events.visibility import run_is_visible
-
 from orchid_ai.persistence.base import OrchidChatStorage
 
 from ..auth import get_auth_context

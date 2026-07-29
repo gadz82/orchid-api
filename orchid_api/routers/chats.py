@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query
-
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.persistence.base import OrchidChatStorage
 

@@ -20,7 +20,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
-
 from orchid_ai.config.schema import OrchidAgentsConfig
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.state import OrchidAuthContext

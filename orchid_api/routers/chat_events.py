@@ -40,7 +40,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-
 from orchid_ai.core.events.job import JobRun, JobStatus
 from orchid_ai.core.state import OrchidAuthContext
 from orchid_ai.events.streaming import ChatBloomEvent

@@ -38,9 +38,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-
 from orchid_ai.core.auth_config import OrchidAuthExchangeError
+from pydantic import BaseModel, Field
 
 from ..context import app_ctx
 

@@ -35,13 +35,12 @@ import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
-
 from orchid_ai.core.mcp_gateway_state import (
     OrchidMCPGatewayAuthCode,
     OrchidMCPGatewayClient,
     OrchidMCPGatewayToken,
 )
+from pydantic import BaseModel, Field
 
 from ..context import app_ctx
 from ..settings import Settings, get_settings
@@ -111,7 +110,7 @@ class GatewayClientDTO(BaseModel):
         )
 
     @classmethod
-    def from_record(cls, record: OrchidMCPGatewayClient) -> "GatewayClientDTO":
+    def from_record(cls, record: OrchidMCPGatewayClient) -> GatewayClientDTO:
         return cls(
             client_id=record.client_id,
             redirect_uris=list(record.redirect_uris),
@@ -160,7 +159,7 @@ class GatewayAuthCodeDTO(BaseModel):
         )
 
     @classmethod
-    def from_record(cls, record: OrchidMCPGatewayAuthCode) -> "GatewayAuthCodeDTO":
+    def from_record(cls, record: OrchidMCPGatewayAuthCode) -> GatewayAuthCodeDTO:
         return cls(
             code=record.code,
             client_id=record.client_id,
@@ -223,7 +222,7 @@ class GatewayTokenDTO(BaseModel):
         )
 
     @classmethod
-    def from_record(cls, record: OrchidMCPGatewayToken) -> "GatewayTokenDTO":
+    def from_record(cls, record: OrchidMCPGatewayToken) -> GatewayTokenDTO:
         return cls(
             access_token=record.access_token,
             refresh_token=record.refresh_token,

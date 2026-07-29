@@ -50,7 +50,6 @@ import os
 from typing import Any
 
 import httpx
-
 from orchid_ai import Orchid
 from orchid_ai.core.run_config import with_auth
 from orchid_ai.mcp.oauth_state import build_oauth_state_store

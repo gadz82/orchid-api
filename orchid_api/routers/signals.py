@@ -20,7 +20,6 @@ import uuid as _uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from orchid_ai.core.state import OrchidAuthContext
 
 from ..auth import get_auth_context

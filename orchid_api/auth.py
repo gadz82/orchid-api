@@ -6,7 +6,6 @@ import asyncio
 import logging
 
 from fastapi import Depends, Header, HTTPException
-
 from orchid_ai.core.identity import OrchidIdentityError
 from orchid_ai.core.state import OrchidAuthContext
 

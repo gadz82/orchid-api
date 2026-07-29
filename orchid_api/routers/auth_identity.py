@@ -36,14 +36,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-
+from fastapi import APIRouter, Depends, HTTPException
 from orchid_ai.core.identity import OrchidIdentityError
+from pydantic import BaseModel, Field
 
 from ..context import app_ctx
 from ..settings import Settings, get_settings
-from fastapi import Depends
 
 logger = logging.getLogger(__name__)
 

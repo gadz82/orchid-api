@@ -11,7 +11,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langgraph.errors import GraphInterrupt
-
 from orchid_ai.core.mcp import OrchidMCPTokenStore
 from orchid_ai.core.run_config import with_auth
 from orchid_ai.core.state import OrchidAuthContext
@@ -192,14 +191,12 @@ async def send_chat_message(
             request_id,
             graph_elapsed,
         )
-    except Exception as exc:
+    except Exception:
         graph_elapsed = (time.perf_counter() - graph_start) * 1000
-        logger.error(
-            "[req=%s] Graph execution error chat=%s: %s",
+        logger.exception(
+            "[req=%s] Graph execution error chat=%s",
             request_id,
             chat_id[:8],
-            exc,
-            exc_info=True,
         )
         # Persist the user message so the chat history is not orphaned.
         try:
