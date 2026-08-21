@@ -65,18 +65,35 @@ async def get_authorize_url(
     registration = await registration_store.get(server_name)
     if registration is None:
         try:
-            metadata_url = await probe_mcp_server_for_resource_metadata(
-                mcp_url=server_info.url,
-                server_name=server_name,
-            )
-            discovery = OrchidMCPAuthDiscovery(
-                store=registration_store,
-                redirect_uri=callback_url(settings),
-            )
-            registration = await discovery.ensure_registration(
-                server_name=server_name,
-                resource_metadata_url=metadata_url,
-            )
+            # Manual OAuth config (for non-compliant servers) lives on the
+            # registry entry populated from YAML at startup.
+            manual_config = server_info.manual_oauth_config if server_info else None
+
+            if manual_config:
+                # Skip auto-discovery and use manual config
+                discovery = OrchidMCPAuthDiscovery(
+                    store=registration_store,
+                    redirect_uri=callback_url(settings),
+                )
+                registration = await discovery.ensure_registration(
+                    server_name=server_name,
+                    resource_metadata_url="",  # Not needed for manual config
+                    manual_config=manual_config,
+                )
+            else:
+                # Standard auto-discovery flow
+                metadata_url = await probe_mcp_server_for_resource_metadata(
+                    mcp_url=server_info.url,
+                    server_name=server_name,
+                )
+                discovery = OrchidMCPAuthDiscovery(
+                    store=registration_store,
+                    redirect_uri=callback_url(settings),
+                )
+                registration = await discovery.ensure_registration(
+                    server_name=server_name,
+                    resource_metadata_url=metadata_url,
+                )
         except Exception as exc:
             reason = exc.reason if hasattr(exc, "reason") else str(exc)
             logger.warning(

@@ -120,10 +120,16 @@ async def trigger_discovery(
         redirect_uri=callback_url(settings),
     )
 
+    # Manual OAuth config (for non-compliant servers) lives on the
+    # registry entry populated from YAML at startup.
+    server_info = registry.get_server(server_name)
+    manual_config = server_info.manual_oauth_config if server_info else None
+
     try:
         record = await discovery.ensure_registration(
             server_name=server_name,
-            resource_metadata_url=body.resource_metadata_url,
+            resource_metadata_url=body.resource_metadata_url if not manual_config else "",
+            manual_config=manual_config,
         )
     except OrchidMCPDiscoveryError as exc:
         logger.warning("[MCP OAuth] Discovery failed for '%s': %s", server_name, exc.reason)
