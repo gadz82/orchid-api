@@ -412,6 +412,7 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `DEV_AUTH_BYPASS` | `false` | Skip auth (dev only) |
+| `DEV_BYPASS_TOKEN` | `dev-token` | Bearer token used in dev-bypass mode; forwarded to `auth.mode: passthrough` MCP servers |
 | `IDENTITY_RESOLVER_CLASS` | — | Dotted path to `OrchidIdentityResolver` subclass — required for real auth, also powers `/auth/resolve-identity` |
 | `AUTH_DOMAIN` | — | Operator-level default platform domain forwarded to the identity resolver |
 | `AUTH_CONFIG_PROVIDER_CLASS` | — | Dotted path to `OrchidAuthConfigProvider` subclass — unlocks `/auth-info` upstream-OAuth discovery |

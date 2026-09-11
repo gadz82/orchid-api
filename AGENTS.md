@@ -69,7 +69,7 @@ orchid-api/
 All settings are env vars, optionally populated from `orchid.yml` via `ORCHID_CONFIG`. The full matrix is in `README.md`; the high-level groups are:
 
 - **Core** — `LITELLM_MODEL`, `AGENTS_CONFIG_PATH`, `VECTOR_BACKEND`, `QDRANT_URL`, `EMBEDDING_MODEL`, `CHAT_STORAGE_CLASS`, `CHAT_DB_DSN`, `CHAT_EXTRA_MIGRATIONS_PACKAGE`, `STARTUP_HOOK`, `API_BASE_URL`, `LANGSMITH_*`.
-- **Auth (consumer-pluggable)** — `IDENTITY_RESOLVER_CLASS` (also powers `/auth/resolve-identity`), `AUTH_DOMAIN`, `AUTH_CONFIG_PROVIDER_CLASS`, `AUTH_EXCHANGE_CLIENT_CLASS`, `AUTH_OAUTH_CLIENT_ID_ENV`, `AUTH_OAUTH_SCOPE`, `DEV_AUTH_BYPASS`.
+- **Auth (consumer-pluggable)** — `IDENTITY_RESOLVER_CLASS` (also powers `/auth/resolve-identity`), `AUTH_DOMAIN`, `AUTH_CONFIG_PROVIDER_CLASS`, `AUTH_EXCHANGE_CLIENT_CLASS`, `AUTH_OAUTH_CLIENT_ID_ENV`, `AUTH_OAUTH_SCOPE`, `DEV_AUTH_BYPASS`, `DEV_BYPASS_TOKEN`.
 - **Outbound MCP** — `MCP_TOKEN_STORE_CLASS`, `MCP_TOKEN_STORE_DSN`, `MCP_CLIENT_REGISTRATION_STORE_CLASS`, `MCP_CLIENT_REGISTRATION_STORE_DSN`, `OAUTH_STATE_STORE_CLASS`, `OAUTH_STATE_TTL_SECONDS`.
 - **Inbound gateway state** — `MCP_GATEWAY_STATE_STORE_CLASS`, `MCP_GATEWAY_STATE_STORE_DSN`, `MCP_GATEWAY_STATE_SERVICE_TOKEN` (empty disables `/mcp-gateway/state/*`).
 
@@ -202,3 +202,4 @@ local dev; production requires a valid Bearer.  See
 - CORS allows `localhost:3000` and `frontend:3000` — add new origins in `main.py` if needed.
 - The `lifespan()` function builds the graph at startup. Changes to agent config require a restart.
 - Embedding dimension mismatch (768 vs 1536 vs 3072) causes silent retrieval failures. Switching models requires re-indexing.
+- `DEV_AUTH_BYPASS=true` uses a hardcoded `dev-token` by default. Passthrough MCP servers reject it. Set `DEV_BYPASS_TOKEN` to a real token (e.g., a GitLab PAT) when testing passthrough MCP servers locally. The same token is forwarded to every passthrough server, so this is best for testing one server at a time.

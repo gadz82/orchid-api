@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
-
 from orchid_ai.core.identity import OrchidIdentityError
 from orchid_ai.core.state import OrchidAuthContext
 
@@ -26,6 +25,18 @@ async def test_dev_auth_bypass():
     assert ctx.access_token == "dev-token"
     assert ctx.tenant_key == "99999"
     assert ctx.user_id == "dev-user-00000000"
+
+
+@pytest.mark.asyncio
+async def test_dev_auth_bypass_uses_configured_token():
+    """DEV_BYPASS_TOKEN customises the token forwarded to passthrough MCP servers."""
+    settings = Settings(dev_auth_bypass=True, dev_bypass_token="glpat-real-token")
+    ctx = await get_auth_context(
+        authorization="Bearer anything",
+        x_auth_domain=None,
+        settings=settings,
+    )
+    assert ctx.access_token == "glpat-real-token"
 
 
 @pytest.mark.asyncio

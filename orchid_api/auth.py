@@ -78,7 +78,7 @@ async def get_auth_context(
             "dev-user-00000000",
         )
         bypass_ctx = OrchidAuthContext(
-            access_token="dev-token",
+            access_token=settings.dev_bypass_token,
             tenant_key="99999",
             user_id="dev-user-00000000",
         )
