@@ -107,7 +107,7 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         # Bloom triggers.  Wire the dev resolver so those paths work too.
         from .dev_identity import DevBypassIdentityResolver
 
-        app_ctx.identity_resolver = DevBypassIdentityResolver()
+        app_ctx.identity_resolver = DevBypassIdentityResolver(access_token=s.dev_bypass_token)
         logger.warning(
             "[API] No identity resolver configured — using DevBypassIdentityResolver "
             "because DEV_AUTH_BYPASS=true.  MUST NOT be used in production."

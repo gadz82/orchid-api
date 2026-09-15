@@ -20,7 +20,7 @@ from orchid_ai.core.state import OrchidAuthContext
 
 _logger = logging.getLogger(__name__)
 
-_DEV_TOKEN = "dev-token"
+_DEFAULT_DEV_TOKEN = "dev-token"
 _DEV_TENANT = "99999"
 _DEV_USER = "dev-user-00000000"
 
@@ -28,17 +28,20 @@ _DEV_USER = "dev-user-00000000"
 class DevBypassIdentityResolver(OrchidIdentityResolver):
     """Identity resolver that blindly trusts its inputs — for local dev only."""
 
+    def __init__(self, access_token: str = _DEFAULT_DEV_TOKEN) -> None:
+        self._access_token = access_token
+
     async def resolve(self, domain: str, bearer_token: str) -> OrchidAuthContext:
         _logger.debug("[DevBypass] resolve called — returning hardcoded dev context")
         return OrchidAuthContext(
-            access_token=_DEV_TOKEN,
+            access_token=self._access_token,
             tenant_key=_DEV_TENANT,
             user_id=_DEV_USER,
         )
 
     async def resolve_service_account(self, name: str) -> OrchidAuthContext:
         return OrchidAuthContext(
-            access_token=_DEV_TOKEN,
+            access_token=self._access_token,
             tenant_key=_DEV_TENANT,
             user_id=f"svc:{name}",
         )
@@ -51,7 +54,7 @@ class DevBypassIdentityResolver(OrchidIdentityResolver):
             user_id,
         )
         return OrchidAuthContext(
-            access_token=_DEV_TOKEN,
+            access_token=self._access_token,
             tenant_key=tenant_key,
             user_id=user_id,
         )

@@ -21,6 +21,15 @@ async def test_resolve_returns_hardcoded_dev_context():
 
 
 @pytest.mark.asyncio
+async def test_resolve_uses_configured_access_token():
+    resolver = DevBypassIdentityResolver(access_token="glpat-real-token")
+    ctx = await resolver.resolve(domain="any.example.com", bearer_token="ignored")
+    assert ctx.access_token == "glpat-real-token"
+    assert ctx.tenant_key == "99999"
+    assert ctx.user_id == "dev-user-00000000"
+
+
+@pytest.mark.asyncio
 async def test_resolve_service_account_embeds_name_in_user_id():
     resolver = DevBypassIdentityResolver()
     ctx = await resolver.resolve_service_account(name="digest-bot")

@@ -17,14 +17,12 @@ from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from orchid_ai.mcp.session_warmer import OrchidWarmReport
 
 from orchid_api import lifecycle as lifecycle_module
 from orchid_api.context import app_ctx
 from orchid_api.dev_identity import DevBypassIdentityResolver
 from orchid_api.settings import Settings
-
 
 # ── Shared reset fixture ─────────────────────────────────────
 
@@ -88,6 +86,21 @@ async def test_dev_auth_bypass_wires_dev_bypass_resolver(caplog):
 
     assert isinstance(app_ctx.identity_resolver, DevBypassIdentityResolver)
     assert any("DevBypassIdentityResolver" in m for m in caplog.messages)
+
+
+@pytest.mark.asyncio
+async def test_dev_auth_bypass_passes_custom_token_to_resolver():
+    """Settings.dev_bypass_token is forwarded to DevBypassIdentityResolver."""
+    fake = _fake_orchid()
+    with ExitStack() as stack:
+        for p in _base_patches(fake):
+            stack.enter_context(p)
+        await lifecycle_module.setup_orchid(
+            settings=Settings(dev_auth_bypass=True, dev_bypass_token="glpat-real-token")
+        )
+
+    assert app_ctx.identity_resolver is not None
+    assert app_ctx.identity_resolver._access_token == "glpat-real-token"
 
 
 @pytest.mark.asyncio

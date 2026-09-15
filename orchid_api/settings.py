@@ -181,6 +181,7 @@ class Settings(BaseSettings):
 
     # ── Dev mode ──────────────────────────────────────────────
     dev_auth_bypass: bool = False
+    dev_bypass_token: str = "dev-token"
 
     # ── Startup hook ─────────────────────────────────────────
     startup_hook: str = ""

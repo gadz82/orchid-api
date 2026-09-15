@@ -7,7 +7,6 @@ import tempfile
 from unittest.mock import patch
 
 import yaml
-
 from orchid_ai.config.yaml_env import YAML_TO_ENV as _YAML_TO_ENV
 
 from orchid_api.settings import Settings, _apply_api_yaml_config, _apply_yaml_config
@@ -37,6 +36,10 @@ class TestSettings:
     def test_default_dev_auth_bypass(self):
         s = Settings()
         assert s.dev_auth_bypass is False
+
+    def test_default_dev_bypass_token(self):
+        s = Settings()
+        assert s.dev_bypass_token == "dev-token"
 
     def test_default_langsmith_tracing(self):
         s = Settings()
@@ -118,7 +121,7 @@ class TestYamlToEnvMapping:
         The ``api:`` section is intentionally absent — it is handled
         locally by ``orchid-api`` rather than the core framework.
         """
-        sections = {k[0] for k in _YAML_TO_ENV.keys()}
+        sections = {k[0] for k in _YAML_TO_ENV}
         expected = {
             "agents",
             "llm",
