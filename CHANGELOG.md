@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.8.8 (2026-09-15)
+
+### Bug Fixes
+
+- Add `DEV_BYPASS_TOKEN` support for configurable dev auth token
+  ([`e49a3c9`](https://github.com/gadz82/orchid-api/commit/e49a3c9f55439b4e14a12d561901cd79837515b5))
+
+- Add support for manual OAuth config in MCP discovery flow
+  ([`beb69f3`](https://github.com/gadz82/orchid-api/commit/beb69f3697481dbffdc49e4fc35a8ec1e911de39))
+
+
 ## v1.8.7 (2026-07-29)
 
 ### Bug Fixes
