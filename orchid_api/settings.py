@@ -143,7 +143,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
 
     # ── Chat persistence ───────────────────────────────────
-    chat_storage_class: str = "orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage"
+    chat_storage_class: str = "orchid_storage_sqlite.chat_storage.OrchidSQLiteChatStorage"
     chat_db_dsn: str = "~/.orchid/chats.db"
 
     # Dotted import path of an integrator-supplied migrations package.
@@ -193,7 +193,7 @@ class Settings(BaseSettings):
     allow_index_endpoint: bool = False
 
     # ── MCP OAuth token storage (shares DB with chat persistence) ──
-    mcp_token_store_class: str = "orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore"
+    mcp_token_store_class: str = "orchid_storage_sqlite.mcp_token_store.OrchidSQLiteMCPTokenStore"
     mcp_token_store_dsn: str = "~/.orchid/chats.db"  # same DB as chat storage by default
 
     # ── MCP 2025-03-26 client-registration store (RFC 7591 DCR) ──
@@ -201,7 +201,7 @@ class Settings(BaseSettings):
     # DSN as the chat + token stores by default (all four backed by
     # the same DB via the unified v001 migration).
     mcp_client_registration_store_class: str = (
-        "orchid_ai.persistence.mcp_client_registration_sqlite.OrchidSQLiteMCPClientRegistrationStore"
+        "orchid_storage_sqlite.mcp_client_registration_store.OrchidSQLiteMCPClientRegistrationStore"
     )
     mcp_client_registration_store_dsn: str = "~/.orchid/chats.db"
 
@@ -211,7 +211,7 @@ class Settings(BaseSettings):
     # across replicas so multi-instance gateway deployments don't
     # reinvent their own state.
     mcp_gateway_state_store_class: str = (
-        "orchid_ai.persistence.mcp_gateway_state_sqlite.OrchidSQLiteMCPGatewayStateStore"
+        "orchid_storage_sqlite.mcp_gateway_state_store.OrchidSQLiteMCPGatewayStateStore"
     )
     mcp_gateway_state_store_dsn: str = "~/.orchid/chats.db"
     # Shared service token — downstream gateways (orchid-mcp) must

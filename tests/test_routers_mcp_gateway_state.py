@@ -22,8 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-
-from orchid_ai.persistence.mcp_gateway_state_sqlite import (
+from orchid_storage_sqlite.mcp_gateway_state_store import (
     OrchidSQLiteMCPGatewayStateStore,
 )
 
@@ -47,7 +46,6 @@ from orchid_api.routers.mcp_gateway_state import (
     revoke_token,
 )
 from orchid_api.settings import Settings
-
 
 # ── Fixtures ──────────────────────────────────────────────────
 

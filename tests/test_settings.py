@@ -19,7 +19,7 @@ class TestSettings:
 
     def test_default_storage_class(self):
         s = Settings()
-        assert s.chat_storage_class == "orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage"
+        assert s.chat_storage_class == "orchid_storage_sqlite.chat_storage.OrchidSQLiteChatStorage"
 
     def test_default_storage_dsn(self):
         s = Settings()
