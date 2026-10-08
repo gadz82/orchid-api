@@ -401,7 +401,7 @@ All settings are environment variables, optionally populated from `orchid.yml` v
 | `VECTOR_BACKEND` | `qdrant` | Vector store backend (`qdrant` or `null`) |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant connection URL |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_STORAGE_CLASS` | `orchid_ai.persistence.sqlite.OrchidSQLiteChatStorage` | Storage backend class |
+| `CHAT_STORAGE_CLASS` | `orchid_storage_sqlite.chat_storage.OrchidSQLiteChatStorage` | Storage backend class (default durable backend, shipped with `orchid-api`) |
 | `CHAT_DB_DSN` | `~/.orchid/chats.db` | Database connection string |
 | `STARTUP_HOOK` | — | Async function called at startup |
 | `LANGSMITH_TRACING` | `false` | Enable LangSmith tracing |
@@ -434,9 +434,9 @@ These settings are local to `orchid-api` and are not part of the core framework 
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `MCP_TOKEN_STORE_CLASS` | `orchid_ai.persistence.mcp_token_sqlite.OrchidSQLiteMCPTokenStore` | Per-user OAuth token store (for external MCP servers) |
+| `MCP_TOKEN_STORE_CLASS` | `orchid_storage_sqlite.mcp_token_store.OrchidSQLiteMCPTokenStore` | Per-user OAuth token store (for external MCP servers) |
 | `MCP_TOKEN_STORE_DSN` | `~/.orchid/chats.db` | Token store connection string (defaults to chat DB) |
-| `MCP_CLIENT_REGISTRATION_STORE_CLASS` | `orchid_ai.persistence.mcp_client_registration_sqlite.OrchidSQLiteMCPClientRegistrationStore` | Per-server discovered endpoints + DCR credentials |
+| `MCP_CLIENT_REGISTRATION_STORE_CLASS` | `orchid_storage_sqlite.mcp_client_registration_store.OrchidSQLiteMCPClientRegistrationStore` | Per-server discovered endpoints + DCR credentials |
 | `MCP_CLIENT_REGISTRATION_STORE_DSN` | `~/.orchid/chats.db` | Registration store DSN |
 | `OAUTH_STATE_STORE_CLASS` | `memory` | PKCE/CSRF state store between `/authorize` + `/callback` (`memory` or dotted class path) |
 | `OAUTH_STATE_TTL_SECONDS` | `600` | State TTL for the in-flight OAuth dance |
@@ -445,7 +445,7 @@ These settings are local to `orchid-api` and are not part of the core framework 
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `MCP_GATEWAY_STATE_STORE_CLASS` | `orchid_ai.persistence.mcp_gateway_state_sqlite.OrchidSQLiteMCPGatewayStateStore` | Backend for DCR clients + auth codes + issued tokens |
+| `MCP_GATEWAY_STATE_STORE_CLASS` | `orchid_storage_sqlite.mcp_gateway_state_store.OrchidSQLiteMCPGatewayStateStore` | Backend for DCR clients + auth codes + issued tokens |
 | `MCP_GATEWAY_STATE_STORE_DSN` | `~/.orchid/chats.db` | Gateway-state DSN (defaults to chat DB) |
 | `MCP_GATEWAY_STATE_SERVICE_TOKEN` | — | Shared secret gating `/mcp-gateway/state/*` — empty disables the endpoint group (returns 503) |
 
@@ -460,7 +460,7 @@ There are **no API-level env vars** for the events runtime — the full surface 
 
 ## Custom storage backends
 
-The default SQLite storage at `~/.orchid/chats.db` is fine for development and small deployments. For production, swap to PostgreSQL (built-in) or implement your own `OrchidChatStorage` subclass.
+The default SQLite storage at `~/.orchid/chats.db` (via `orchid-storage-sqlite`, a dependency of `orchid-api`) is fine for development and small deployments. For production, swap to PostgreSQL via `orchid-storage-postgres` or implement your own `OrchidChatStorage` subclass. The framework itself defaults to in-memory storage when no backend is configured.
 
 ```yaml
 # orchid.yml — built-in PostgreSQL
