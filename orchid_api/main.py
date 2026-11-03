@@ -132,6 +132,7 @@ async def lifespan(app: FastAPI):
 
 # ── App factory ─────────────────────────────────────────────
 
+# ORCHID-MEM: 01a1a0c1-dbab-773f-bd34-55ed5aa4fea5 — FastAPI composition root and lifespan
 app = FastAPI(
     title="Orchid API",
     version="0.2.0",
