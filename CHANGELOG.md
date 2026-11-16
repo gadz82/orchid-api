@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v1.9.1 (2026-11-16)
+
+### Bug Fixes
+
+- **ci**: Make release workflow idempotent
+  ([`61be831`](https://github.com/gadz82/orchid-api/commit/61be831d9dc58afe679799ca7ed6e984d4807a21))
+
+### Chores
+
+- **deps**: Require orchid-ai >=1.12.0
+  ([`98f4857`](https://github.com/gadz82/orchid-api/commit/98f4857848f1585676cc942fbc9bd9ecc3465494))
+
+- **orchid-sdd**: Migrate workspace knowledge and memory [skip ci]
+  ([`d098d0d`](https://github.com/gadz82/orchid-api/commit/d098d0d69ab0ad70679ebb525c6022b20eb85f25))
+
+### Testing
+
+- **decision**: Verify the API config loader accepts decision providers (P-007)
+  ([`5d59b76`](https://github.com/gadz82/orchid-api/commit/5d59b76607e1a91841d594cc6886237a14978186))
+
+
 ## v1.9.0 (2026-10-08)
 
 ### Features
