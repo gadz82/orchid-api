@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.10.0 (2026-11-20)
+
+### Chores
+
+- **deps**: Require orchid-ai>=1.13.0
+  ([`d2af8b8`](https://github.com/gadz82/orchid-api/commit/d2af8b802dfc39a93cf49ea7022306314d1fc05d))
+
+### Features
+
+- Expose data pipelines over HTTP
+  ([`a0701e1`](https://github.com/gadz82/orchid-api/commit/a0701e135ff680b2fd0ed99083b9e10abb43a1cb))
+
+
 ## v1.9.1 (2026-11-16)
 
 ### Bug Fixes
