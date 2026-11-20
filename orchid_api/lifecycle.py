@@ -215,6 +215,8 @@ async def setup_orchid(settings: Settings | None = None) -> None:
     # that isn't the real Pydantic model as 'no events'.
     if not isinstance(events_cfg, OrchidEventsConfig):
         events_cfg = None
+    pipeline_registry = app_ctx.orchid.pipelines if app_ctx.orchid is not None else None
+    known_pipelines = set(pipeline_registry.names()) if pipeline_registry is not None else set()
     app_ctx.events = await start_events(
         events_config=events_cfg,
         chat_storage=app_ctx.chat_repo,
@@ -223,7 +225,9 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         known_agents=set(
             (app_ctx.orchid.config.agents.keys()) if events_cfg is not None and app_ctx.orchid is not None else []
         ),
+        known_pipelines=known_pipelines,
         graph_invoker=_build_graph_invoker() if app_ctx.orchid is not None else None,
+        pipeline_runner=_build_pipeline_runner() if pipeline_registry is not None else None,
     )
     if app_ctx.events.enabled:
         # Build the FastAPI-backed HTTP ingestion producer when the
@@ -283,6 +287,45 @@ async def setup_orchid(settings: Settings | None = None) -> None:
         s.vector_backend,
         list(app_ctx.orchid.config.agents.keys()),
     )
+
+
+# ORCHID-MEM: 01a1f3ce-660f-7938-84b7-947011ec255b — Bloom pipeline adapter; maps the events runner call to the facade and keeps Bloom chat scope.
+class _APIPipelineRunner:
+    """Bloom adapter over the Orchid facade's pipeline runner.
+
+    The events layer calls ``run(name, input, mode="bloom", ...)``; the facade
+    accepts ``direct``/``chat``. Bloom runs map to ``chat`` so the run keeps its
+    chat scope (when a binding is present) and the same interpretation policy.
+    """
+
+    async def run(
+        self,
+        name: str,
+        input: dict[str, Any],
+        *,
+        auth: Any,
+        mode: str = "bloom",
+        correlation_id: str | None = None,
+        chat_id: str | None = None,
+        include_graph: bool = False,
+    ) -> Any:
+        orchid = app_ctx.orchid
+        if orchid is None:
+            raise RuntimeError("Orchid is not initialised")
+        facade_mode = "chat" if mode in ("bloom", "chat") else "direct"
+        return await orchid.run_pipeline(
+            name,
+            input,
+            auth=auth,
+            chat_id=chat_id,
+            correlation_id=correlation_id,
+            mode=facade_mode,
+            include_graph=include_graph,
+        )
+
+
+def _build_pipeline_runner() -> _APIPipelineRunner:
+    return _APIPipelineRunner()
 
 
 def _build_graph_invoker():

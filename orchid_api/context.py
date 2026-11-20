@@ -53,6 +53,11 @@ class AppContext:
     # and the four routers degrade gracefully (503 from the deps).
     events: Any = None
 
+    # Per-process pipeline rate limiter.  Kept here rather than in a
+    # module-global so tests and embedded apps reset it with the context.
+    pipeline_limiter: Any = None
+    pipeline_limiter_limit: int = 0
+
     # ── Read-through properties (convenience for existing routers) ──
 
     @property
@@ -138,6 +143,22 @@ def get_runtime() -> OrchidRuntime:
     :class:`OrchidRuntime()` via the property.
     """
     return app_ctx.runtime
+
+
+def get_pipelines() -> Any:
+    """FastAPI dependency — returns the compiled pipeline registry or 503.
+
+    ``pipelines:`` is optional, so a deployment without it behaves exactly
+    like the pre-pipeline API; the router surfaces a clear 503 instead of an
+    ``AttributeError``.
+    """
+    registry = app_ctx.orchid.pipelines if app_ctx.orchid is not None else None
+    if registry is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Pipelines are not configured or are disabled (check the 'pipelines:' block)",
+        )
+    return registry
 
 
 def get_agents_config() -> OrchidAgentsConfig:

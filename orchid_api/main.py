@@ -40,6 +40,7 @@ from .routers import (
     mcp_gateway,
     mcp_gateway_state,
     messages,
+    pipelines,
     resume,
     runs,
     schedules,
@@ -138,6 +139,7 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+app.add_exception_handler(pipelines.PipelineAPIError, pipelines.pipeline_error_handler)
 
 # ── CORS (origins configurable via Settings.cors_allowed_origins) ──
 _cors_origins = [o.strip() for o in get_settings().cors_allowed_origins.split(",") if o.strip()]
@@ -181,6 +183,7 @@ app.include_router(jobs.router)
 app.include_router(runs.router)
 app.include_router(schedules.router)
 app.include_router(chat_events.router)
+app.include_router(pipelines.router)
 
 
 # ── File exports (static mount) ────────────────────────────

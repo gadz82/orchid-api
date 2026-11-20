@@ -179,6 +179,14 @@ class Settings(BaseSettings):
     rate_limit_uploads_per_minute: int = 10
     rate_limit_index_per_minute: int = 5
 
+    # ── Data pipelines ────────────────────────────────────────
+    # Sync run timeout (capped by the pipeline's own limit), per-user
+    # request rate, and the default tool-result budget for pipelines
+    # that do not override ``expose.max_tool_result_chars``.
+    pipeline_run_timeout_seconds: int = 300
+    pipeline_rate_limit_per_minute: int = 30
+    pipeline_max_tool_result_chars: int = 8000
+
     # ── Dev mode ──────────────────────────────────────────────
     dev_auth_bypass: bool = False
     dev_bypass_token: str = "dev-token"

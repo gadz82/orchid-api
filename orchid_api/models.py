@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 # ── Request models ──────────────────────────────────────────
 
@@ -20,6 +20,108 @@ class SendMessageRequest(BaseModel):
 
 class IndexRequest(BaseModel):
     tenant_id: str = "default"
+
+
+class PipelineRunRequest(BaseModel):
+    """One sync or async pipeline run request.
+
+    ``mode`` selects the inline (200) or Bloom (202) path. ``seed`` is the
+    optional list of graph-object mappings the run starts from; ``include_graph``
+    is opt-in because the snapshot can be large.
+    """
+
+    input: dict[str, Any]
+    seed: list[dict[str, Any]] = Field(default_factory=list)
+    mode: Literal["sync", "async"] = "sync"
+    include_graph: bool = False
+    timeout_seconds: float | None = Field(default=None, gt=0, le=3600, allow_inf_nan=False)
+    idempotency_key: str | None = Field(default=None, max_length=200)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PipelineValidateRequest(BaseModel):
+    """Validate one pipeline input without running anything."""
+
+    input: dict[str, Any]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# ── Pipeline response models ───────────────────────────────
+
+
+class PipelineJobOut(BaseModel):
+    id: str
+    kind: str
+    depends_on: list[str] = Field(default_factory=list)
+
+
+class PipelineExposeOut(BaseModel):
+    as_tool: bool
+    requires_approval: bool = False
+    parallel_safe: bool = False
+    require_role: str | None = None
+    max_tool_result_chars: int | None = None
+    interpretation: str | None = None
+
+
+class PipelineAsyncOut(BaseModel):
+    enabled: bool
+    mode: str | None = None
+
+
+class PipelineInfoOut(BaseModel):
+    name: str
+    description: str
+    version: str
+    jobs: list[PipelineJobOut] = Field(default_factory=list)
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
+    expose: PipelineExposeOut
+    async_: PipelineAsyncOut = Field(alias="async", serialization_alias="async")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class PipelineListResponse(BaseModel):
+    items: list[PipelineInfoOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class PipelineValidateResponse(BaseModel):
+    valid: bool
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PipelineAsyncResponse(BaseModel):
+    run_id: str | None = None
+    signal_id: str
+    pipeline: str
+    status: str
+    deduplicated: bool = False
+    status_url: str | None = None
+
+
+class PipelineRunResponse(BaseModel):
+    run_id: str
+    pipeline: str
+    status: str
+    output: dict[str, Any] | None = None
+    summary: str = ""
+    summary_source: str | None = None
+    jobs: dict[str, Any] = Field(default_factory=dict)
+    graph_stats: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    graph: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 # ── Response models ─────────────────────────────────────────
