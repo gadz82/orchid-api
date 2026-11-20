@@ -20,6 +20,7 @@ Provides HTTP endpoints for chat management, streamed message handling, document
 - **MCP gateway state** — server-backed DCR client / auth-code / token store so orchid-mcp can run multi-replica.
 - **MCP gateway exposure** — serves `OrchidMCPGatewayConfig` (tool/prompt overrides) consumed by orchid-mcp.
 - **Outbound MCP per-server OAuth** — each user authorises each MCP server independently; tokens stored in `OrchidMCPTokenStore`.
+- **Typed data pipelines** — list, inspect, validate, run synchronously and stream pipeline/job events over SSE. Runs use the facade and never create a chat row. See the [pipeline guide](https://github.com/gadz82/orchid/blob/main/docs/pipelines.md).
 - **Pollen + Bloom event endpoints** — webhook ingestion (`/signals/...`), run management (`/runs/...`), trigger / schedule introspection, in-chat Bloom event streaming. Activated when `events.enabled: true` in `agents.yaml`; otherwise the routers return 503.
 - **LangSmith tracing** + CORS for browser frontends.
 
@@ -82,6 +83,27 @@ docker compose -f docker-compose.demo.yml up --build
 | `POST` | `/chats/{id}/share` | — | Promote chat RAG data to user scope |
 | `POST` | `/chats/{id}/resume` | JSON | Resume after a HITL approval pause |
 | `GET` | `/health` | — | Readiness check |
+
+### Data pipelines
+
+| Method | Path | Content-Type | Purpose |
+|--------|------|-------------|---------|
+| `GET` | `/pipelines` | — | List configured pipelines (paginated, sanitized) |
+| `GET` | `/pipelines/{name}` | — | Pipeline detail: jobs, input/output schema, expose/async flags |
+| `POST` | `/pipelines/{name}/validate` | JSON | Validate input against the declared shape without running |
+| `POST` | `/pipelines/{name}/runs` | JSON | Sync run (`mode: sync`) or Bloom launch (`mode: async`) |
+| `POST` | `/pipelines/{name}/runs/stream` | JSON | SSE stream of `pipeline.*` events; the final event carries the result |
+
+```bash
+curl -sS -X POST http://localhost:8000/pipelines/customer_health/runs \
+  -H 'Authorization: Bearer dev-token' \
+  -H 'Content-Type: application/json' \
+  -d '{"input": {"customer_id": "C-100"}, "include_graph": true}'
+```
+
+Sync runs return `200` with `status`, `output`, `summary`, `jobs` and `graph_stats`. Invalid input is `422` (`pipeline_input_schema_invalid`), an unknown/disabled pipeline is `404`, a graph snapshot over the cap is `413`, and a timeout is `504`. Async runs return `202` with a `status_url` under `/jobs/{trigger_id}/runs`; `seed`, `include_graph` and `timeout_seconds` are sync-only.
+
+Pipeline routes are a thin adapter over the `Orchid` facade: no graph building, no chat storage and no checkpointer. Auth, role checks and rate limits mirror the rest of the API.
 
 ### Outbound MCP OAuth (per-user external-server tokens)
 

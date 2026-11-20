@@ -20,6 +20,7 @@ orchid-api/
     routers/
       chats.py               CRUD: create, list, delete chat sessions
       messages.py            Send messages + document upload (multipart/form-data)
+      pipelines.py           Typed data pipelines: list, detail, validate, sync/async run, SSE
       streaming.py           SSE-streamed message send
       resume.py              Resume after HITL approval pause
       session.py             POST /session/warm — per-user MCP capability warm-up
@@ -62,7 +63,9 @@ orchid-api/
 
 7. **Don't persist augmented prompts.** Save the original user message to chat history, NOT the version with prepended file content or RAG context.
 
-8. **MCP capability caches are warmed proactively.** `setup_orchid()` calls `Orchid.warm_unauthenticated_capabilities()` after the framework is built so every `auth.mode: none` MCP server's capability cache is populated before the first request. Per-user warming runs once per `(tenant_key, user_id)` — either explicitly via `POST /session/warm` (preferred, called by the frontend after login) or implicitly as a fire-and-forget task scheduled by `get_auth_context` on the first authenticated request. A per-server post-OAuth warm fires from `oauth_callback` once a token is persisted. All three hooks swallow exceptions — warm failures NEVER abort startup or break a request.
+8. **The pipeline router is a thin adapter over the facade.** `routers/pipelines.py` calls `Orchid.run_pipeline` / `stream_pipeline`; it never builds a pipeline graph, imports `pipeline/` internals or writes a chat row. It owns HTTP concerns only: auth, role checks, input-shape validation, stable error codes, rate limits, pagination and the graph-cap mapping. A sync run returns `200` with a failed `status` when the pipeline itself failed; invalid input is `422`; an async launch is `202` with a `status_url` under `/jobs/{trigger_id}/runs`.
+
+9. **MCP capability caches are warmed proactively.** `setup_orchid()` calls `Orchid.warm_unauthenticated_capabilities()` after the framework is built so every `auth.mode: none` MCP server's capability cache is populated before the first request. Per-user warming runs once per `(tenant_key, user_id)` — either explicitly via `POST /session/warm` (preferred, called by the frontend after login) or implicitly as a fire-and-forget task scheduled by `get_auth_context` on the first authenticated request. A per-server post-OAuth warm fires from `oauth_callback` once a token is persisted. All three hooks swallow exceptions — warm failures NEVER abort startup or break a request.
 
 ## Configuration (Settings)
 
@@ -100,6 +103,23 @@ Chat / messages:
 | POST | `/chats/{id}/share` | sharing | Promote chat RAG to user scope |
 | POST | `/session/warm` | session | Warm per-user MCP capability caches (passthrough + oauth) — idempotent |
 | GET | `/health` | diagnostics | Readiness check |
+
+Data pipelines:
+
+| Method | Path | Router | Purpose |
+|--------|------|--------|---------|
+| GET | `/pipelines` | pipelines | List configured pipelines (paginated, sanitized) |
+| GET | `/pipelines/{name}` | pipelines | Pipeline detail: jobs, schemas, expose/async flags |
+| POST | `/pipelines/{name}/validate` | pipelines | Validate input against the shape without running |
+| POST | `/pipelines/{name}/runs` | pipelines | Sync run (`mode: sync`) or Bloom launch (`mode: async`) |
+| POST | `/pipelines/{name}/runs/stream` | pipelines | SSE `pipeline.*` events; final event carries the result |
+
+Pipeline runs never create a chat row and never use a checkpointer. The router
+maps `OrchidPipelineInputError`/`OrchidPipelineShapeError` to `422`, unknown or
+disabled pipelines to `404`, a graph over the cap to `413`, and a timeout to
+`504`. Async runs reject `seed`, `include_graph` and `timeout_seconds`.
+
+Tests: `tests/test_pipelines_router.py` and `tests/test_pipelines_stream.py`.
 
 Outbound MCP OAuth (per-user external-server tokens):
 
@@ -203,3 +223,6 @@ local dev; production requires a valid Bearer.  See
 - The `lifespan()` function builds the graph at startup. Changes to agent config require a restart.
 - Embedding dimension mismatch (768 vs 1536 vs 3072) causes silent retrieval failures. Switching models requires re-indexing.
 - `DEV_AUTH_BYPASS=true` uses a hardcoded `dev-token` by default. Passthrough MCP servers reject it. Set `DEV_BYPASS_TOKEN` to a real token (e.g., a GitLab PAT) when testing passthrough MCP servers locally. The same token is forwarded to every passthrough server, so this is best for testing one server at a time.
+- Pipeline sync runs return `200` with `status: failed` when the pipeline executed but failed; do not turn that into a 5xx. Input validation is a separate `422`.
+- Async pipeline runs return `202` and `run_id: null`; the caller follows `status_url` (`/jobs/{trigger_id}/runs`), not `/pipelines/...`.
+- Pipeline `graph` is opt-in and can be omitted by the cap; do not assume it is always present in the response.
